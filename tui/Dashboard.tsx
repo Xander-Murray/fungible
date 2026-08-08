@@ -72,7 +72,7 @@ const FLEX_TIERS: Array<{ key: keyof FlexSummary; label: string; color: string }
 export function Dashboard({ onNavigate, isActive, initialFilter, showHints, budgetReferenceDate }: { onNavigate: (s: Screen, filter?: TxFilter) => void; isActive?: boolean; initialFilter?: TxFilter; showHints: boolean; budgetReferenceDate?: Date }) {
   const refreshKey = useRefreshKey();
   const { filter: sharedFilter, setFilter } = useFilter();
-  const now = new Date();
+  const now = useMemo(() => new Date(), []);
   const [range, setRange] = useState<Range>(() => {
     const r = initialFilter?.range;
     return (r && (RANGES as string[]).includes(r)) ? r as Range : 'month';
@@ -101,7 +101,10 @@ export function Dashboard({ onNavigate, isActive, initialFilter, showHints, budg
   const [merchantCursor, setMerchantCursor] = useState(0);
   const [merchantDrill, setMerchantDrill] = useState<{ category: string; from: string; to: string } | null>(null);
   const [budgetData, setBudgetData] = useState<BudgetDashboardStatus | null>(null);
-  const accountabilityDate = useMemo(() => budgetReferenceDate ?? new Date(), [budgetReferenceDate?.getTime()]);
+  const accountabilityDate = useMemo(
+    () => budgetReferenceDate ?? (range === 'week' ? anchor : now),
+    [budgetReferenceDate?.getTime(), range, anchor.toISOString().slice(0, 10), now.getTime()],
+  );
 
   // Search
   const [search,          setSearch]          = useState(initialFilter?.search ?? '');
@@ -135,6 +138,7 @@ export function Dashboard({ onNavigate, isActive, initialFilter, showHints, budg
   const searchStatsGuard = useLoadGuard();
   const searchDataGuard = useLoadGuard();
   const merchantGuard = useLoadGuard();
+  const budgetGuard = useLoadGuard();
 
   function load(r: Range, a: Date, qf: Filter) {
     const { from, to } = getPeriodDates(r, a);
@@ -163,7 +167,10 @@ export function Dashboard({ onNavigate, isActive, initialFilter, showHints, budg
   }, [range, anchor.toISOString().slice(0, 10), queryFilter, refreshKey]);
 
   useEffect(() => {
-    void getBudgetDashboardStatus(accountabilityDate).then(setBudgetData);
+    const token = budgetGuard.begin();
+    void getBudgetDashboardStatus(accountabilityDate).then((data) => {
+      if (budgetGuard.isLatest(token)) setBudgetData(data);
+    });
   }, [accountabilityDate.getTime(), refreshKey]);
 
   useEffect(() => {

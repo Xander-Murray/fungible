@@ -162,6 +162,28 @@ describe('Dashboard', () => {
     });
   });
 
+  it('updates the Chase snapshot when navigating historical weeks', async () => {
+    await db.batch([
+      "UPDATE accounts SET institution_name = 'Chase' WHERE id = 'test-credit'",
+      "UPDATE transactions SET classification = 'EXPENSE' WHERE amount > 0",
+    ], 'write');
+
+    const r = dash({ initialFilter: { range: 'week', anchor: '2026-05-11' } });
+    await waitFor(() => {
+      const f = frame(r);
+      expect(f).toContain('May 11–17, 2026');
+      expect(f).toContain('$128.99 / $185.00');
+    });
+
+    r.stdin.write('\u001B[D');
+    await waitFor(() => {
+      const f = frame(r);
+      expect(f).toContain('May 4–10, 2026');
+      expect(f).toContain('$165.00 / $185.00');
+      expect(f).toContain('ESSENTIALS ONLY');
+    });
+  });
+
   it('SPENDING BY CATEGORY lines sum to the displayed Expenses total', async () => {
     // Exercise the two cases that used to break reconciliation: a refund inside a
     // real category (must NET to 200, not show 300) and an income+spend mix inside
