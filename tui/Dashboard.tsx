@@ -316,8 +316,8 @@ export function Dashboard({ onNavigate, isActive, initialFilter, showHints, budg
         }
         return;
       }
-      // ← →, r: fall through — re-fetch effect handles merchant refresh on anchor/range change
-      if (!key.leftArrow && !key.rightArrow && input !== 'r') { return; }
+      // ← →, r/R: fall through — re-fetch effect handles merchant refresh on anchor/range change
+      if (!key.leftArrow && !key.rightArrow && input !== 'r' && input !== 'R') { return; }
     }
 
     // Search input mode — capture all keys
@@ -424,9 +424,10 @@ export function Dashboard({ onNavigate, isActive, initialFilter, showHints, budg
       if (input === 'c') { setSelectedAccount(null); return; }
     }
 
-    if (input === 'r') {
+    if (input === 'r' || input === 'R') {
       const idx = RANGES.indexOf(range);
-      const next = RANGES[(idx + 1) % RANGES.length];
+      const direction = input === 'R' ? -1 : 1;
+      const next = RANGES[(idx + direction + RANGES.length) % RANGES.length];
       setRange(next);
       setAnchor(getPeriodStart(next, now));
       setCatCursor(0);
@@ -477,7 +478,7 @@ export function Dashboard({ onNavigate, isActive, initialFilter, showHints, budg
 
       <Box marginTop={1}><Text bold>Dashboard</Text></Box>
       {merchantDrill
-        ? showHints && <Text dimColor>← → period  ·  [r] range  ·  ↑↓ merchant  ·  Enter txns  ·  Esc back</Text>
+        ? showHints && <Text dimColor>← → period  ·  [r/R] range  ·  ↑↓ merchant  ·  Enter txns  ·  Esc back</Text>
         : <Text dimColor>
             {showHints
               ? (view === 'account'
@@ -485,7 +486,7 @@ export function Dashboard({ onNavigate, isActive, initialFilter, showHints, budg
                   : view === 'categories'
                     ? `[/] search  ·  ← → period  ·  ↑↓ select  ·  Enter txns${scorecardMode ? `  ·  [x] ${detailMode ? 'compact' : 'columns'}` : '  ·  [m] merchants'}  ·  [Tab] view  ·  [s] scorecard`
                     : view === 'owner'
-                      ? '← → period  ·  [r] range  ·  [Tab] view'
+                      ? '← → period  ·  [r/R] range  ·  [Tab] view'
                       : `[/] search  ·  ← → period  ·  Enter txns${scorecardMode ? `  ·  [x] ${detailMode ? 'compact' : 'columns'}` : ''}  ·  [Tab] view  ·  [s] scorecard`)
               : '[/] search'}
           </Text>
@@ -498,7 +499,7 @@ export function Dashboard({ onNavigate, isActive, initialFilter, showHints, budg
               {RANGE_LABELS[r]}
             </Text>
           ))}
-          {showHints && <Text dimColor>[r]</Text>}
+          {showHints && <Text dimColor>[r/R]</Text>}
         </Box>
         <Box gap={2}>
           {range !== 'alltime'

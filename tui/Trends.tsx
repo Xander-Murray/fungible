@@ -148,8 +148,9 @@ export function Trends({
     }
     if (key.upArrow)   { setCursor((c) => Math.max(0, c - 1)); return; }
     if (key.downArrow) { setCursor((c) => Math.min(activeRows.length - 1, c + 1)); return; }
-    if (input === 'r') {
-      setRange((r) => TRENDS_RANGES[(TRENDS_RANGES.indexOf(r) + 1) % TRENDS_RANGES.length]);
+    if (input === 'r' || input === 'R') {
+      const direction = input === 'R' ? -1 : 1;
+      setRange((r) => TRENDS_RANGES[(TRENDS_RANGES.indexOf(r) + direction + TRENDS_RANGES.length) % TRENDS_RANGES.length]);
       return;
     }
     if (key.return) {
@@ -213,7 +214,7 @@ export function Trends({
 
       <Box marginTop={1}><Text bold>Trends</Text></Box>
       <Text dimColor>{showHints
-        ? (searchMode ? '' : search ? '↑↓ navigate  ·  [r] range  ·  [/] search  ·  Enter txns' : '←→ view  ·  ↑↓ navigate  ·  [r] range  ·  [/] search  ·  Enter txns')
+        ? (searchMode ? '' : search ? '↑↓ navigate  ·  [r/R] range  ·  [/] search  ·  Enter txns' : '←→ view  ·  ↑↓ navigate  ·  [r/R] range  ·  [/] search  ·  Enter txns')
         : '[/] search'}
       </Text>
 
@@ -224,7 +225,7 @@ export function Trends({
               {RANGE_LABELS[r]}
             </Text>
           ))}
-          {showHints && <Text dimColor>[r]</Text>}
+          {showHints && <Text dimColor>[r/R]</Text>}
         </Box>
         {!search && (
           <Text><Text dimColor>← </Text><Text bold>{view.label}</Text><Text dimColor> →  {posLabel}</Text></Text>

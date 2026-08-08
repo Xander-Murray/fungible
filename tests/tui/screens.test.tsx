@@ -280,6 +280,13 @@ describe('Dashboard', () => {
     });
   });
 
+  it('Shift+R cycles the dashboard range backward', async () => {
+    const r = dash({ initialFilter: { range: 'alltime', anchor: '2026-05-01' } });
+    await waitFor(() => expect(frame(r)).toContain('All Time'));
+    r.stdin.write('R');
+    await waitFor(() => expect(frame(r)).toContain(`← ${new Date().getFullYear()} →`));
+  });
+
   it('/ key opens search mode', async () => {
     const r = dash();
     await waitFor(() => expect(frame(r)).toContain('Income'));
@@ -884,6 +891,13 @@ describe('Trends', () => {
     await waitFor(() => expect(frame(r)).toContain('Month'));
     r.stdin.write('r');
     await waitFor(() => expect(frame(r)).toContain('Quarter'));
+  });
+
+  it('Shift+R cycles the trends range backward', async () => {
+    const r = trends();
+    await waitFor(() => expect(frame(r)).toContain('May 2026'));
+    r.stdin.write('R');
+    await waitFor(() => expect(frame(r)).toContain('May 4–10 2026'));
   });
 
   it('pressing nav number calls onNavigate', async () => {
