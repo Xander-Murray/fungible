@@ -6,7 +6,7 @@ vi.mock('../core/db.js', async () => {
 });
 
 import { db } from '../core/db.js';
-import { budgetStatus, getMonthlyBudgetStatus, getWeeklyFlexibleStatus } from '../core/budget.js';
+import { budgetStatus, getMonthlyBudgetStatus } from '../core/budget.js';
 
 const limits: Array<[string, number]> = [
   ['Food & Drink', 180],
@@ -129,22 +129,6 @@ describe('getMonthlyBudgetStatus', () => {
 
   it('rejects invalid month input', async () => {
     await expect(getMonthlyBudgetStatus(2026, 13)).rejects.toThrow(/valid year and month/);
-  });
-});
-
-describe('getWeeklyFlexibleStatus', () => {
-  it('totals the configured flexible categories for the selected Monday-to-Sunday week', async () => {
-    await insertTransaction({ amount: 45, category: 'Dining', classification: 'EXPENSE', date: '2026-08-03' });
-    await insertTransaction({ amount: -10, category: 'Dining', classification: 'REFUND', date: '2026-08-04' });
-    await insertTransaction({ amount: 80, category: 'Grocery', classification: 'EXPENSE', date: '2026-08-09' });
-    await insertTransaction({ amount: 100, category: 'Shopping', classification: 'EXPENSE', date: '2026-08-10' });
-    await insertTransaction({ amount: 500, category: 'Shopping', classification: 'TRANSFER', date: '2026-08-05' });
-
-    const result = await getWeeklyFlexibleStatus(new Date(2026, 7, 5, 12));
-    expect(result).toMatchObject({ from: '2026-08-03', to: '2026-08-09', spent: 115 });
-    expect(result.categories.find((row) => row.category === 'Food & Drink')?.spent).toBe(35);
-    expect(result.categories.find((row) => row.category === 'Groceries')?.spent).toBe(80);
-    expect(result.categories.find((row) => row.category === 'Shopping')?.spent).toBe(0);
   });
 });
 

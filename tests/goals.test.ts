@@ -160,7 +160,7 @@ describe('budget dashboard supporting totals', () => {
   it('returns every dashboard section through one integrated query surface', async () => {
     const result = await getBudgetDashboardStatus(new Date(2026, 7, 5, 12));
     expect(result).toEqual(expect.objectContaining({
-      weekly: expect.any(Object), weeklyFlexible: expect.any(Object), monthly: expect.any(Object), goals: expect.any(Object),
+      weekly: expect.any(Object), monthly: expect.any(Object), goals: expect.any(Object),
       verifiedIncome: 0, fixedObligations: expect.any(Array),
     }));
   });
