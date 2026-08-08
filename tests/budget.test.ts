@@ -141,10 +141,20 @@ describe('getWeeklyFlexibleStatus', () => {
     await insertTransaction({ amount: 500, category: 'Shopping', classification: 'TRANSFER', date: '2026-08-05' });
 
     const result = await getWeeklyFlexibleStatus(new Date(2026, 7, 5, 12));
-    expect(result).toMatchObject({ from: '2026-08-03', to: '2026-08-09', spent: 115 });
-    expect(result.categories.find((row) => row.category === 'Food & Drink')?.spent).toBe(35);
-    expect(result.categories.find((row) => row.category === 'Groceries')?.spent).toBe(80);
-    expect(result.categories.find((row) => row.category === 'Shopping')?.spent).toBe(0);
+    expect(result).toMatchObject({
+      from: '2026-08-03', to: '2026-08-09', spent: 115, limit: 185,
+      remaining: 70, status: 'GOOD',
+    });
+    expect(result.categories.find((row) => row.category === 'Food & Drink')).toMatchObject({
+      spent: 35, limit: 41.37, remaining: 6.37, status: 'WARNING',
+    });
+    expect(result.categories.find((row) => row.category === 'Groceries')).toMatchObject({
+      spent: 80, limit: 34.47, remaining: -45.53, status: 'OVER_BUDGET',
+    });
+    expect(result.categories.find((row) => row.category === 'Shopping')).toMatchObject({
+      spent: 0, limit: 28.73, remaining: 28.73, status: 'GOOD',
+    });
+    expect(result.categories.reduce((sum, row) => sum + row.limit, 0)).toBe(185);
   });
 });
 

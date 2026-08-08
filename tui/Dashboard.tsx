@@ -605,15 +605,23 @@ export function Dashboard({ onNavigate, isActive, initialFilter, showHints, budg
             ))}
           </Box>
           <Box marginTop={1} gap={2}>
-            <Text bold>THIS WEEK BY FLEXIBLE CATEGORY</Text>
-            <Text bold>{fmt(budgetData.weeklyFlexible.spent)}</Text>
+            <Text bold>WEEKLY CATEGORY PACE</Text>
+            <Text>{fmt(budgetData.weeklyFlexible.spent)} / {fmt(budgetData.weeklyFlexible.limit)}</Text>
             <Text dimColor>{budgetData.weeklyFlexible.from} – {budgetData.weeklyFlexible.to}</Text>
+          </Box>
+          <Box>
+            <Text color={accountabilityColor(budgetData.weeklyFlexible.status)} bold>
+              {fmt(budgetData.weeklyFlexible.remaining)} remaining · {Math.round(budgetData.weeklyFlexible.percentage)}% · {statusLabel(budgetData.weeklyFlexible.status)}
+            </Text>
           </Box>
           <Box flexDirection="column">
             {budgetData.weeklyFlexible.categories.map((category) => (
               <Box key={category.category} gap={2}>
                 <Text>{category.category.padEnd(24)}</Text>
-                <Text>{fmt(category.spent).padStart(20)}</Text>
+                <Text>{`${fmt(category.spent)} / ${fmt(category.limit)}`.padStart(20)}</Text>
+                <Text color={accountabilityColor(category.status)}>
+                  {`${fmt(category.remaining)} left · ${Math.round(category.percentage)}% · ${statusLabel(category.status)}`}
+                </Text>
               </Box>
             ))}
           </Box>

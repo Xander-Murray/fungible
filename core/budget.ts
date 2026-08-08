@@ -46,7 +46,11 @@ export type WeeklyFlexibleStatus = {
   from: string;
   to: string;
   spent: number;
-  categories: Array<{ category: string; spent: number }>;
+  limit: number;
+  remaining: number;
+  percentage: number;
+  status: WeeklyBudgetStatus;
+  categories: MonthlyBudgetCategory[];
 };
 
 export type SavingsGoalProgress = {
@@ -240,12 +244,35 @@ async function getFlexibleCategorySpending(from: string, to: string): Promise<Ar
 export async function getWeeklyFlexibleStatus(referenceDate = new Date()): Promise<WeeklyFlexibleStatus> {
   if (Number.isNaN(referenceDate.getTime())) throw new Error('Weekly flexible spending requires a valid reference date');
   const { from, to } = getPeriodDates('week', getPeriodStart('week', referenceDate));
-  const categories = (await getFlexibleCategorySpending(from, to))
-    .map(({ category, spent }) => ({ category, spent }));
+  const [spending, limit] = await Promise.all([
+    getFlexibleCategorySpending(from, to),
+    getWeeklyChaseLimit(),
+  ]);
+  const monthlyLimit = spending.reduce((sum, row) => sum + row.limit, 0);
+  let allocated = 0;
+  const categories = spending.map((row, index): MonthlyBudgetCategory => {
+    const categoryLimit = index === spending.length - 1
+      ? money(limit - allocated)
+      : money(monthlyLimit === 0 ? 0 : (row.limit / monthlyLimit) * limit);
+    allocated = money(allocated + categoryLimit);
+    return {
+      category: row.category,
+      spent: row.spent,
+      limit: categoryLimit,
+      remaining: money(categoryLimit - row.spent),
+      percentage: percentage(row.spent, categoryLimit),
+      status: budgetStatus(row.spent, categoryLimit),
+    };
+  });
+  const spent = money(categories.reduce((sum, row) => sum + row.spent, 0));
   return {
     from,
     to,
-    spent: money(categories.reduce((sum, row) => sum + row.spent, 0)),
+    spent,
+    limit,
+    remaining: money(limit - spent),
+    percentage: percentage(spent, limit),
+    status: weeklyBudgetStatus(spent, limit),
     categories,
   };
 }

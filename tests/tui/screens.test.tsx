@@ -159,10 +159,13 @@ describe('Dashboard', () => {
       expect(f).toContain('MONTHLY FLEXIBLE');
       expect(f).toContain('$293.99 / $805.00');
       expect(f).toContain('WEEKLY FLEXIBLE');
-      expect(f.match(/\$165\.00 \/ \$185\.00/g)).toHaveLength(2);
+      expect(f.match(/\$165\.00 \/ \$185\.00/g)).toHaveLength(3);
       expect(f).toContain('$20.00 remaining · 89% · ESSENTIALS ONLY');
-      expect(f).toContain('THIS WEEK BY FLEXIBLE CATEGORY');
+      expect(f).toContain('WEEKLY CATEGORY PACE');
       expect(f).toContain('2026-05-04 – 2026-05-10');
+      expect(f.match(/\$20\.00 remaining · 89% · ESSENTIALS ONLY/g)).toHaveLength(2);
+      expect(f).toContain('$45.00 / $41.37');
+      expect(f).toContain('-$3.63 left · 109% · OVER BUDGET');
       expect(f).toContain('Groceries');
     });
   });
