@@ -6,6 +6,8 @@ import { applyTagRules } from './tag-rules.js';
 import { deduplicateCsvVsPlaid } from './dedup.js';
 import { decryptToken } from './crypto.js';
 import type { Transaction } from 'plaid';
+import { classifyTransaction } from './transaction-classification.js';
+import { reconcileOwnedTransfers } from './classification-store.js';
 
 export async function syncTransactions(accessToken: string, itemId: string) {
   const cursorRes = await db.execute({
@@ -40,7 +42,9 @@ export async function syncTransactions(accessToken: string, itemId: string) {
         {
           sql: `INSERT INTO accounts (id, name, type, subtype, mask, item_id)
                 VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET name=excluded.name, item_id=excluded.item_id`,
+                ON CONFLICT(id) DO UPDATE SET
+                  name=excluded.name, type=excluded.type, subtype=excluded.subtype,
+                  mask=excluded.mask, item_id=excluded.item_id`,
           args: [acct.account_id, acct.name, acct.type, acct.subtype ?? null, acct.mask ?? null, itemId],
         },
       ];
@@ -59,29 +63,45 @@ export async function syncTransactions(accessToken: string, itemId: string) {
 
   // Load rules once for the batch
   const [catRules, nameRules] = await Promise.all([loadCategoryRules(), loadNameRules()]);
+  const accounts = new Map(accountsResponse.data.accounts.map((account) => [account.account_id, account]));
 
   // Upsert added + modified
   if (added.length > 0 || modified.length > 0) {
     await db.batch(
       [...added, ...modified].map((tx) => {
         const rawCategory = tx.personal_finance_category?.primary ?? null;
+        const rawCategoryDetail = tx.personal_finance_category?.detailed ?? null;
         const category = categorizeWithRules(catRules, tx.name, tx.merchant_name ?? null, rawCategory, tx.amount, tx.account_id);
         const displayName = applyNameRulesWithRules(nameRules, tx.name, tx.amount, tx.account_id);
+        const account = accounts.get(tx.account_id);
+        const classification = classifyTransaction({
+          amount: tx.amount,
+          name: tx.name,
+          merchantName: tx.merchant_name ?? null,
+          category,
+          plaidPrimary: rawCategory,
+          plaidDetailed: rawCategoryDetail,
+          accountType: account?.type ?? null,
+          accountSubtype: account?.subtype ?? null,
+        });
         return {
-          sql: `INSERT INTO transactions (id, account_id, date, name, merchant_name, amount, category, raw_category, pending, display_name)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          sql: `INSERT INTO transactions (id, account_id, date, name, merchant_name, amount, category, raw_category, raw_category_detail, pending, display_name, classification)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                   date=excluded.date, name=excluded.name, merchant_name=excluded.merchant_name,
                   amount=excluded.amount,
                   category=COALESCE(manual_category, excluded.category),
                   raw_category=excluded.raw_category,
+                  raw_category_detail=excluded.raw_category_detail,
                   pending=excluded.pending,
-                  display_name=excluded.display_name`,
+                  display_name=excluded.display_name,
+                  classification=COALESCE(manual_classification, excluded.classification)`,
           args: [
             tx.transaction_id, tx.account_id, tx.date, tx.name,
             tx.merchant_name ?? null, tx.amount, category, rawCategory,
-            tx.pending ? 1 : 0,
+            rawCategoryDetail, tx.pending ? 1 : 0,
             displayName !== tx.name ? displayName : null,
+            classification,
           ],
         };
       }),
@@ -91,6 +111,7 @@ export async function syncTransactions(accessToken: string, itemId: string) {
     // Apply tag rules to new/changed rows. Suppression keeps removed tags gone,
     // so re-asserting on modified/existing rows is safe.
     await applyTagRules({ txIds: [...added, ...modified].map((tx) => tx.transaction_id) });
+    await reconcileOwnedTransfers();
   }
 
   // Remove deleted. Clear child rows first: transaction_tags has a FK

@@ -115,6 +115,9 @@ export async function initDb() {
     'ALTER TABLE transactions ADD COLUMN manual_category TEXT',
     'ALTER TABLE transactions ADD COLUMN display_name TEXT',
     'ALTER TABLE transactions ADD COLUMN ignored INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE transactions ADD COLUMN classification TEXT',
+    'ALTER TABLE transactions ADD COLUMN manual_classification TEXT',
+    'ALTER TABLE transactions ADD COLUMN raw_category_detail TEXT',
     'ALTER TABLE category_rules ADD COLUMN min_amount REAL',
     'ALTER TABLE category_rules ADD COLUMN max_amount REAL',
     'ALTER TABLE name_rules ADD COLUMN min_amount REAL',
@@ -138,6 +141,17 @@ export async function initDb() {
       if (!msg.includes('duplicate column name') && !msg.includes('already exists')) throw e;
     }
   }
+
+  // Existing rows lack Plaid's detailed category, so credits cannot safely be
+  // promoted to verified income. Leave them for review until a sync or manual
+  // classification supplies stronger evidence.
+  await db.execute(`UPDATE transactions
+    SET classification = CASE
+      WHEN category IN ('Transfer', 'Loan Payment') THEN 'TRANSFER'
+      WHEN amount > 0 THEN 'EXPENSE'
+      ELSE 'NEEDS_REVIEW'
+    END
+    WHERE classification IS NULL`);
 
   // Seed default flexibility tiers (only where not already set)
   const flexDefaults: [string, string][] = [

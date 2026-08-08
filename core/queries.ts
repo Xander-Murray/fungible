@@ -1,9 +1,11 @@
 import { db } from './db.js';
 import { buildFilterClause, buildFilterConditions, type Filter } from './filters.js';
+import type { TransactionClassification } from './transaction-classification.js';
 
 export type CategorySummary = { category: string; total: number };
 export type MonthlySummary  = { income: number; expenses: number; net: number; byCategory: CategorySummary[] };
-export type RecentTransaction = { id: string; date: string; name: string; merchant_name: string | null; amount: number; category: string };
+
+export type RecentTransaction = { id: string; date: string; name: string; merchant_name: string | null; amount: number; category: string; classification: TransactionClassification | null };
 
 export type MerchantSummaryRow = {
   merchant: string;
@@ -125,7 +127,7 @@ export async function getFlexSummary(from: string, to: string, filter?: Filter):
 
 export async function getRecentTransactions(limit = 10): Promise<RecentTransaction[]> {
   const result = await db.execute({
-    sql: 'SELECT id, date, name, merchant_name, amount, category FROM transactions WHERE pending = 0 ORDER BY date DESC LIMIT ?',
+    sql: 'SELECT id, date, name, merchant_name, amount, category, classification FROM transactions WHERE pending = 0 ORDER BY date DESC LIMIT ?',
     args: [limit],
   });
   return result.rows as unknown as RecentTransaction[];
@@ -543,6 +545,7 @@ export const SORT_ORDER_BY: Record<SortMode, string> = {
 export type TxRow = {
   id: string; date: string; name: string; display_name: string | null; merchant_name: string | null;
   amount: number; category: string; manual_category: string | null; ignored: number; tag_names: string | null;
+  classification: TransactionClassification | null; manual_classification: TransactionClassification | null;
 };
 
 export function buildSearchRe(search: string): RegExp {
@@ -571,6 +574,7 @@ export async function getTransactions(filters: {
   const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
   const result = await db.execute({
     sql: `SELECT t.id, t.date, t.name, t.display_name, t.merchant_name, t.amount, t.category, t.manual_category, t.ignored,
+            t.classification, t.manual_classification,
             (SELECT GROUP_CONCAT(tg2.name, ', ') FROM transaction_tags tt2 JOIN tags tg2 ON tg2.id = tt2.tag_id WHERE tt2.transaction_id = t.id) as tag_names
           FROM transactions t ${where}
           ORDER BY ${SORT_ORDER_BY[sort]}
@@ -616,10 +620,10 @@ export async function getLinkedAccounts(): Promise<LinkedAccount[]> {
   }));
 }
 
-export type CsvAccount = { id: string; name: string; mask: string | null };
+export type CsvAccount = { id: string; name: string; mask: string | null; type: string; subtype: string | null };
 
 export async function getCsvAccounts(): Promise<CsvAccount[]> {
-  const result = await db.execute('SELECT id, name, mask FROM accounts');
+  const result = await db.execute('SELECT id, name, mask, type, subtype FROM accounts');
   return result.rows as unknown as CsvAccount[];
 }
 

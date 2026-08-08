@@ -17,6 +17,8 @@ import {
   setTransactionCategoryBulk,
   clearOverridesBulk,
   setIgnoredBulk,
+  setTransactionClassification,
+  clearTransactionClassificationOverride,
 } from '../core/transactions.js';
 
 let txId = 0;
@@ -89,6 +91,23 @@ describe('setTransactionIgnored', () => {
     await setTransactionIgnored(id, false);
     const row = (await db.execute({ sql: 'SELECT ignored FROM transactions WHERE id = ?', args: [id] })).rows[0] as unknown as { ignored: number };
     expect(row.ignored).toBe(0);
+  });
+});
+
+describe('transaction classification overrides', () => {
+  it('sets and pins a manual classification', async () => {
+    const id = await insertTx({ amount: -25 });
+    await setTransactionClassification(id, 'REIMBURSEMENT');
+    const row = (await db.execute({ sql: 'SELECT classification, manual_classification FROM transactions WHERE id = ?', args: [id] })).rows[0];
+    expect(row).toMatchObject({ classification: 'REIMBURSEMENT', manual_classification: 'REIMBURSEMENT' });
+  });
+
+  it('clears the override and restores automatic classification', async () => {
+    const id = await insertTx({ name: 'Store purchase refund', amount: -25 });
+    await setTransactionClassification(id, 'INCOME');
+    await clearTransactionClassificationOverride(id);
+    const row = (await db.execute({ sql: 'SELECT classification, manual_classification FROM transactions WHERE id = ?', args: [id] })).rows[0];
+    expect(row).toMatchObject({ classification: 'REFUND', manual_classification: null });
   });
 });
 

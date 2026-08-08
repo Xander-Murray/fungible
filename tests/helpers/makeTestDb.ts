@@ -27,7 +27,10 @@ const SCHEMA = `
     pending INTEGER NOT NULL DEFAULT 0,
     manual_category TEXT,
     display_name TEXT,
-    ignored INTEGER NOT NULL DEFAULT 0
+    ignored INTEGER NOT NULL DEFAULT 0,
+    classification TEXT,
+    manual_classification TEXT,
+    raw_category_detail TEXT
   );
 
   CREATE TABLE category_rules (

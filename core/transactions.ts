@@ -3,6 +3,11 @@ import { categorizeWithRules, loadCategoryRules } from './categorize.js';
 import { rebuildDisplayNames } from './rename.js';
 import { applyCategoriesToAll } from './categorize.js';
 import { validateRegex } from './rule-utils.js';
+import { classifyTransactionById, reconcileOwnedTransfers } from './classification-store.js';
+import {
+  TRANSACTION_CLASSIFICATIONS,
+  type TransactionClassification,
+} from './transaction-classification.js';
 
 // ── Single-transaction mutations ───────────────────────────────────────────────
 
@@ -35,6 +40,26 @@ export async function setTransactionIgnored(id: string, ignored: boolean): Promi
     sql: 'UPDATE transactions SET ignored = ? WHERE id = ?',
     args: [ignored ? 1 : 0, id],
   });
+}
+
+export async function setTransactionClassification(id: string, classification: TransactionClassification): Promise<void> {
+  if (!TRANSACTION_CLASSIFICATIONS.includes(classification)) {
+    throw new Error(`Invalid transaction classification: ${classification}`);
+  }
+  await db.execute({
+    sql: 'UPDATE transactions SET classification = ?, manual_classification = ? WHERE id = ?',
+    args: [classification, classification, id],
+  });
+}
+
+export async function clearTransactionClassificationOverride(id: string): Promise<void> {
+  const classification = await classifyTransactionById(id);
+  if (classification === null) return;
+  await db.execute({
+    sql: 'UPDATE transactions SET classification = ?, manual_classification = NULL WHERE id = ?',
+    args: [classification, id],
+  });
+  await reconcileOwnedTransfers();
 }
 
 export async function setTransactionDisplayName(id: string, name: string): Promise<void> {

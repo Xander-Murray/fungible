@@ -101,7 +101,9 @@ describe('importCsvTransactions honors account-scoped rules', () => {
     await saveCategoryRule({ pattern: 'amazon', matchType: 'name', category: 'Business Expenses', minAmount: null, maxAmount: null, accountId: 'work' });
 
     const rows = [['2025-01-01', 'AMAZON.COM', '25.00']];
-    const result = await importCsvTransactions(rows, { id: 'work', name: 'Work Card', mask: null }, {
+    const result = await importCsvTransactions(rows, {
+      id: 'work', name: 'Work Card', mask: null, type: 'credit', subtype: 'credit card',
+    }, {
       amountMode: 'single', dateCol: 0, nameCol: 1, amountCol: 2, debitCol: null, creditCol: null, positiveIsInflow: false,
     });
     expect(result.imported).toBe(1);

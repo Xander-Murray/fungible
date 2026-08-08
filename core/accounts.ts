@@ -3,6 +3,8 @@ import { categorizeWithRules, loadCategoryRules } from './categorize.js';
 import { applyTagRules } from './tag-rules.js';
 import { parseDate, generateTxId } from './csv.js';
 import type { CsvAccount } from './queries.js';
+import { classifyTransaction } from './transaction-classification.js';
+import { reconcileOwnedTransfers } from './classification-store.js';
 
 export async function updateAccountTypeSubtype(id: string, type: string, subtype: string | null): Promise<void> {
   await db.execute({ sql: 'UPDATE accounts SET type = ?, subtype = ? WHERE id = ?', args: [type, subtype, id] });
@@ -94,15 +96,23 @@ export async function importCsvTransactions(
     if (!rawDate || !name || isNaN(amount)) { skipped++; continue; }
     const date = parseDate(rawDate);
     const category = categorizeWithRules(rules, name, null, null, amount, account.id);
+    const classification = classifyTransaction({
+      amount,
+      name,
+      category,
+      accountType: account.type,
+      accountSubtype: account.subtype,
+    });
     const id = generateTxId(account.mask ?? account.id, date, name, amount);
     const result = await db.execute({
-      sql: 'INSERT OR IGNORE INTO transactions (id, account_id, date, name, amount, category, raw_category, pending) VALUES (?, ?, ?, ?, ?, ?, NULL, 0)',
-      args: [id, account.id, date, name, amount, category],
+      sql: 'INSERT OR IGNORE INTO transactions (id, account_id, date, name, amount, category, raw_category, pending, classification) VALUES (?, ?, ?, ?, ?, ?, NULL, 0, ?)',
+      args: [id, account.id, date, name, amount, category, classification],
     });
     if (result.rowsAffected > 0) { imported++; newIds.push(id); } else skipped++;
   }
   // Tag only genuinely new rows so a tag a user removed never returns.
   await applyTagRules({ txIds: newIds });
+  await reconcileOwnedTransfers();
   return { imported, skipped };
 }
 
