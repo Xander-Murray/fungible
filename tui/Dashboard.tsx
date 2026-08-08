@@ -604,6 +604,19 @@ export function Dashboard({ onNavigate, isActive, initialFilter, showHints, budg
               </Box>
             ))}
           </Box>
+          <Box marginTop={1} gap={2}>
+            <Text bold>THIS WEEK BY FLEXIBLE CATEGORY</Text>
+            <Text bold>{fmt(budgetData.weeklyFlexible.spent)}</Text>
+            <Text dimColor>{budgetData.weeklyFlexible.from} – {budgetData.weeklyFlexible.to}</Text>
+          </Box>
+          <Box flexDirection="column">
+            {budgetData.weeklyFlexible.categories.map((category) => (
+              <Box key={category.category} gap={2}>
+                <Text>{category.category.padEnd(24)}</Text>
+                <Text>{fmt(category.spent).padStart(20)}</Text>
+              </Box>
+            ))}
+          </Box>
           <Box marginTop={1}><Divider /></Box>
         </Box>
       )}

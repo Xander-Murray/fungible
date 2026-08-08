@@ -42,6 +42,13 @@ export type MonthlyBudgetStatus = {
   categories: MonthlyBudgetCategory[];
 };
 
+export type WeeklyFlexibleStatus = {
+  from: string;
+  to: string;
+  spent: number;
+  categories: Array<{ category: string; spent: number }>;
+};
+
 export type SavingsGoalProgress = {
   key: 'roth' | 'savings';
   label: string;
@@ -71,6 +78,7 @@ export type FixedObligation = {
 
 export type BudgetDashboardStatus = {
   weekly: WeeklySpendingSummary;
+  weeklyFlexible: WeeklyFlexibleStatus;
   monthly: MonthlyBudgetStatus;
   goals: SavingsGoalsStatus;
   verifiedIncome: number;
@@ -227,6 +235,19 @@ async function getFlexibleCategorySpending(from: string, to: string): Promise<Ar
     limit: money(Number(row.monthly_limit)),
     spent: money(Math.max(0, Number(row.net_spent))),
   }));
+}
+
+export async function getWeeklyFlexibleStatus(referenceDate = new Date()): Promise<WeeklyFlexibleStatus> {
+  if (Number.isNaN(referenceDate.getTime())) throw new Error('Weekly flexible spending requires a valid reference date');
+  const { from, to } = getPeriodDates('week', getPeriodStart('week', referenceDate));
+  const categories = (await getFlexibleCategorySpending(from, to))
+    .map(({ category, spent }) => ({ category, spent }));
+  return {
+    from,
+    to,
+    spent: money(categories.reduce((sum, row) => sum + row.spent, 0)),
+    categories,
+  };
 }
 
 export async function getMonthlyBudgetStatus(year: number, month: number): Promise<MonthlyBudgetStatus> {
@@ -415,12 +436,13 @@ export async function getFixedObligations(year: number, month: number): Promise<
 export async function getBudgetDashboardStatus(referenceDate = new Date()): Promise<BudgetDashboardStatus> {
   const year = referenceDate.getFullYear();
   const month = referenceDate.getMonth() + 1;
-  const [weekly, monthly, goals, verifiedIncome, fixedObligations] = await Promise.all([
+  const [weekly, weeklyFlexible, monthly, goals, verifiedIncome, fixedObligations] = await Promise.all([
     getWeeklySpendingStatus(referenceDate),
+    getWeeklyFlexibleStatus(referenceDate),
     getMonthlyBudgetStatus(year, month),
     getSavingsGoalsStatus(referenceDate),
     getVerifiedIncome(year, month),
     getFixedObligations(year, month),
   ]);
-  return { weekly, monthly, goals, verifiedIncome, fixedObligations };
+  return { weekly, weeklyFlexible, monthly, goals, verifiedIncome, fixedObligations };
 }
