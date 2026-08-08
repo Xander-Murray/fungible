@@ -42,6 +42,13 @@ export type MonthlyBudgetStatus = {
   categories: MonthlyBudgetCategory[];
 };
 
+export type WeeklyFlexibleStatus = {
+  from: string;
+  to: string;
+  spent: number;
+  categories: Array<{ category: string; spent: number }>;
+};
+
 export type SavingsGoalProgress = {
   key: 'roth' | 'savings';
   label: string;
@@ -71,6 +78,7 @@ export type FixedObligation = {
 
 export type BudgetDashboardStatus = {
   weekly: WeeklySpendingSummary;
+  weeklyFlexible: WeeklyFlexibleStatus;
   monthly: MonthlyBudgetStatus;
   goals: SavingsGoalsStatus;
   verifiedIncome: number;
@@ -197,13 +205,11 @@ export async function getWeeklySpendingStatus(referenceDate = new Date()): Promi
   };
 }
 
-export async function getMonthlyBudgetStatus(year: number, month: number): Promise<MonthlyBudgetStatus> {
-  if (!Number.isInteger(year) || year < 1 || year > 9999
-    || !Number.isInteger(month) || month < 1 || month > 12) {
-    throw new Error('Budget month must use a valid year and month');
-  }
-  const from = `${year}-${String(month).padStart(2, '0')}-01`;
-  const to = `${year}-${String(month).padStart(2, '0')}-31`;
+async function getFlexibleCategorySpending(from: string, to: string): Promise<Array<{
+  category: string;
+  limit: number;
+  spent: number;
+}>> {
   const result = await db.execute({
     sql: `SELECT budget.name AS category, budget.monthly_limit AS monthly_limit,
             COALESCE(SUM(CASE
@@ -222,12 +228,37 @@ export async function getMonthlyBudgetStatus(year: number, month: number): Promi
           ORDER BY budget.name`,
     args: [from, to],
   });
-
-  const categories = (result.rows as unknown as {
+  return (result.rows as unknown as {
     category: string; monthly_limit: number; net_spent: number;
-  }[]).map((row): MonthlyBudgetCategory => {
-    const limit = money(Number(row.monthly_limit));
-    const spent = money(Math.max(0, Number(row.net_spent)));
+  }[]).map((row) => ({
+    category: row.category,
+    limit: money(Number(row.monthly_limit)),
+    spent: money(Math.max(0, Number(row.net_spent))),
+  }));
+}
+
+export async function getWeeklyFlexibleStatus(referenceDate = new Date()): Promise<WeeklyFlexibleStatus> {
+  if (Number.isNaN(referenceDate.getTime())) throw new Error('Weekly flexible spending requires a valid reference date');
+  const { from, to } = getPeriodDates('week', getPeriodStart('week', referenceDate));
+  const categories = (await getFlexibleCategorySpending(from, to))
+    .map(({ category, spent }) => ({ category, spent }));
+  return {
+    from,
+    to,
+    spent: money(categories.reduce((sum, row) => sum + row.spent, 0)),
+    categories,
+  };
+}
+
+export async function getMonthlyBudgetStatus(year: number, month: number): Promise<MonthlyBudgetStatus> {
+  if (!Number.isInteger(year) || year < 1 || year > 9999
+    || !Number.isInteger(month) || month < 1 || month > 12) {
+    throw new Error('Budget month must use a valid year and month');
+  }
+  const from = `${year}-${String(month).padStart(2, '0')}-01`;
+  const to = `${year}-${String(month).padStart(2, '0')}-31`;
+  const categories = (await getFlexibleCategorySpending(from, to)).map((row): MonthlyBudgetCategory => {
+    const { limit, spent } = row;
     return {
       category: row.category,
       spent,
@@ -405,12 +436,13 @@ export async function getFixedObligations(year: number, month: number): Promise<
 export async function getBudgetDashboardStatus(referenceDate = new Date()): Promise<BudgetDashboardStatus> {
   const year = referenceDate.getFullYear();
   const month = referenceDate.getMonth() + 1;
-  const [weekly, monthly, goals, verifiedIncome, fixedObligations] = await Promise.all([
+  const [weekly, weeklyFlexible, monthly, goals, verifiedIncome, fixedObligations] = await Promise.all([
     getWeeklySpendingStatus(referenceDate),
+    getWeeklyFlexibleStatus(referenceDate),
     getMonthlyBudgetStatus(year, month),
     getSavingsGoalsStatus(referenceDate),
     getVerifiedIncome(year, month),
     getFixedObligations(year, month),
   ]);
-  return { weekly, monthly, goals, verifiedIncome, fixedObligations };
+  return { weekly, weeklyFlexible, monthly, goals, verifiedIncome, fixedObligations };
 }

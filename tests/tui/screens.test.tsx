@@ -158,6 +158,8 @@ describe('Dashboard', () => {
       expect(f).toContain('Tesla payment — / $466.00/mo');
       expect(f).toContain('MONTHLY FLEXIBLE');
       expect(f).toContain('$293.99 / $805.00');
+      expect(f).toContain('WEEKLY FLEXIBLE');
+      expect(f).toContain('2026-05-04 – 2026-05-10');
       expect(f).toContain('Groceries');
     });
   });
