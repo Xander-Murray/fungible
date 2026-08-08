@@ -1,6 +1,21 @@
 import { db } from './db.js';
+import { getPeriodDates, getPeriodStart } from './dateUtils.js';
 
 export type BudgetStatus = 'GOOD' | 'WARNING' | 'OVER_BUDGET';
+export type WeeklyBudgetStatus = 'GOOD' | 'WARNING' | 'ESSENTIALS_ONLY' | 'OVER_BUDGET';
+
+export const WEEKLY_CHASE_LIMIT_KEY = 'budget_weekly_chase_limit';
+export const DEFAULT_WEEKLY_CHASE_LIMIT = 185;
+
+export type WeeklySpendingSummary = {
+  from: string;
+  to: string;
+  spent: number;
+  limit: number;
+  remaining: number;
+  percentage: number;
+  status: WeeklyBudgetStatus;
+};
 
 export type MonthlyBudgetCategory = {
   category: string;
@@ -24,6 +39,10 @@ export type MonthlyBudgetStatus = {
 
 const money = (value: number): number => Math.round(value * 100) / 100;
 
+function requireNonNegativeAmount(value: number, label: string): void {
+  if (!Number.isFinite(value) || value < 0) throw new Error(`${label} must be a non-negative amount`);
+}
+
 export function budgetStatus(spent: number, limit: number): BudgetStatus {
   if (spent > limit) return 'OVER_BUDGET';
   if (limit === 0) return spent === 0 ? 'GOOD' : 'OVER_BUDGET';
@@ -33,6 +52,81 @@ export function budgetStatus(spent: number, limit: number): BudgetStatus {
 function percentage(spent: number, limit: number): number {
   if (limit === 0) return spent === 0 ? 0 : Number.POSITIVE_INFINITY;
   return (spent / limit) * 100;
+}
+
+export function weeklyBudgetStatus(
+  spent: number,
+  limit = DEFAULT_WEEKLY_CHASE_LIMIT,
+): WeeklyBudgetStatus {
+  requireNonNegativeAmount(spent, 'Weekly spending');
+  requireNonNegativeAmount(limit, 'Weekly limit');
+  if (limit === 0) return spent === 0 ? 'GOOD' : 'OVER_BUDGET';
+
+  // Scale the warning bands if the configured limit changes while preserving
+  // the requested $130 / $160 / $185 boundaries at the default limit.
+  const scale = limit / DEFAULT_WEEKLY_CHASE_LIMIT;
+  if (spent > limit) return 'OVER_BUDGET';
+  if (spent > 160 * scale) return 'ESSENTIALS_ONLY';
+  if (spent > 130 * scale) return 'WARNING';
+  return 'GOOD';
+}
+
+export async function getWeeklyChaseLimit(): Promise<number> {
+  const result = await db.execute({
+    sql: 'SELECT value FROM settings WHERE key = ?',
+    args: [WEEKLY_CHASE_LIMIT_KEY],
+  });
+  if (result.rows.length === 0) return DEFAULT_WEEKLY_CHASE_LIMIT;
+  const limit = Number((result.rows[0] as unknown as { value: string }).value);
+  requireNonNegativeAmount(limit, 'Weekly Chase limit');
+  return money(limit);
+}
+
+export async function setWeeklyChaseLimit(limit: number): Promise<void> {
+  requireNonNegativeAmount(limit, 'Weekly Chase limit');
+  await db.execute({
+    sql: `INSERT INTO settings (key, value) VALUES (?, ?)
+          ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    args: [WEEKLY_CHASE_LIMIT_KEY, String(money(limit))],
+  });
+}
+
+export async function getWeeklySpendingStatus(referenceDate = new Date()): Promise<WeeklySpendingSummary> {
+  if (Number.isNaN(referenceDate.getTime())) throw new Error('Weekly budget requires a valid reference date');
+  const weekStart = getPeriodStart('week', referenceDate);
+  const { from, to } = getPeriodDates('week', weekStart);
+  const [limit, result] = await Promise.all([
+    getWeeklyChaseLimit(),
+    db.execute({
+      sql: `SELECT t.category, COALESCE(SUM(t.amount), 0) AS net_spent
+            FROM transactions t
+            JOIN accounts a ON a.id = t.account_id
+            LEFT JOIN categories c ON c.name = t.category
+            WHERE t.date >= ? AND t.date <= ?
+              AND t.pending = 0 AND t.ignored = 0
+              AND COALESCE(t.manual_classification, t.classification)
+                IN ('EXPENSE', 'REFUND', 'REIMBURSEMENT')
+              AND LOWER(a.type) = 'credit'
+              AND (
+                LOWER(COALESCE(a.institution_name, '')) LIKE '%chase%'
+                OR LOWER(a.name) LIKE '%chase%'
+              )
+              AND COALESCE(c.flexibility, '') <> 'fixed'
+            GROUP BY t.category`,
+      args: [from, to],
+    }),
+  ]);
+  const spent = money((result.rows as unknown as { net_spent: number }[])
+    .reduce((sum, row) => sum + Math.max(0, Number(row.net_spent)), 0));
+  return {
+    from,
+    to,
+    spent,
+    limit,
+    remaining: money(limit - spent),
+    percentage: percentage(spent, limit),
+    status: weeklyBudgetStatus(spent, limit),
+  };
 }
 
 export async function getMonthlyBudgetStatus(year: number, month: number): Promise<MonthlyBudgetStatus> {

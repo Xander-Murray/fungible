@@ -43,12 +43,18 @@ describe('personal budget database migration', () => {
       { name: 'Grocery', budget_group: 'Groceries' },
       { name: 'Misc', budget_group: 'Miscellaneous' },
     ]);
+
+    const weeklyLimit = await db.execute("SELECT value FROM settings WHERE key = 'budget_weekly_chase_limit'");
+    expect(weeklyLimit.rows[0]).toMatchObject({ value: '185' });
   });
 
   it('does not restore defaults over user changes on later initialization', async () => {
     await db.execute("UPDATE categories SET monthly_limit = 210 WHERE name = 'Food & Drink'");
+    await db.execute("UPDATE settings SET value = '200' WHERE key = 'budget_weekly_chase_limit'");
     await initDb();
     const row = (await db.execute("SELECT monthly_limit FROM categories WHERE name = 'Food & Drink'")).rows[0];
     expect(row.monthly_limit).toBe(210);
+    const weeklyLimit = (await db.execute("SELECT value FROM settings WHERE key = 'budget_weekly_chase_limit'")).rows[0];
+    expect(weeklyLimit.value).toBe('200');
   });
 });

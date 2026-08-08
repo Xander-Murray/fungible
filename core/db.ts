@@ -228,6 +228,9 @@ export async function initDb() {
     ], 'write');
   }
 
+  await db.execute(`INSERT OR IGNORE INTO settings (key, value)
+    VALUES ('budget_weekly_chase_limit', '185')`);
+
   // Migrate plaintext Plaid access tokens to encrypted form (idempotent)
   const itemsRes = await db.execute('SELECT item_id, access_token FROM plaid_items');
   const plainItems = (itemsRes.rows as unknown as { item_id: string; access_token: string }[])
