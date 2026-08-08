@@ -1,11 +1,9 @@
 import 'dotenv/config';
 import http from 'node:http';
-import { execFile } from 'node:child_process';
 import { initDb, db } from '../core/db.js';
 import { createLinkToken, exchangePublicToken } from '../core/plaid.js';
 import { encryptToken } from '../core/crypto.js';
-
-const PORT = 4747;
+import { openExternalUrl } from '../core/open-url.js';
 
 function linkPage(linkToken: string) {
   return `<!DOCTYPE html>
@@ -159,10 +157,16 @@ async function main() {
     res.end();
   });
 
-  server.listen(PORT, '127.0.0.1', () => {
-    const url = `http://localhost:${PORT}`;
+  server.listen(0, '127.0.0.1', () => {
+    const address = server.address();
+    const port = typeof address === 'object' && address ? address.port : 0;
+    const url = `http://127.0.0.1:${port}`;
     console.log(`Opening ${url} ...`);
-    execFile('open', [url]);
+    void openExternalUrl(url).catch((error) => {
+      console.error('Error:', error instanceof Error ? error.message : String(error));
+      server.close();
+      process.exitCode = 1;
+    });
   });
 }
 

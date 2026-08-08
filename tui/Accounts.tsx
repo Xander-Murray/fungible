@@ -300,6 +300,7 @@ export function Accounts({ onNavigate, isActive, showHints }: { onNavigate: (s: 
   function startPlaidLink(days = 730) {
     setLinkStatus('running');
     setLinkMsg('Opening browser…');
+    let failureMessage = '';
     const node = process.execPath;
     const script = new URL('../scripts/link.ts', import.meta.url).pathname;
     const child = spawn(node, [
@@ -315,8 +316,9 @@ export function Accounts({ onNavigate, isActive, showHints }: { onNavigate: (s: 
       if (line) setLinkMsg(line);
     });
     child.stderr.on('data', (data: Buffer) => {
+      failureMessage = data.toString().trim();
       setLinkStatus('error');
-      setLinkMsg(data.toString().trim());
+      setLinkMsg(failureMessage);
     });
     child.on('close', (code: number) => {
       if (code === 0) {
@@ -325,7 +327,7 @@ export function Accounts({ onNavigate, isActive, showHints }: { onNavigate: (s: 
         loadAccounts();
       } else if (code !== null) {
         setLinkStatus('error');
-        setLinkMsg(`Process exited with code ${code}. Press Enter to continue.`);
+        setLinkMsg(failureMessage || `Plaid link process exited with code ${code}. Press Enter to continue.`);
       }
     });
   }

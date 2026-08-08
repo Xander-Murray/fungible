@@ -92,6 +92,7 @@ export function Setup() {
   function startLink() {
     setLinkStatus('running');
     setLinkMsg('Opening browser…');
+    let failureMessage = '';
     const node = process.execPath;
     const script = new URL('../scripts/link.ts', import.meta.url).pathname;
     const child = spawn(node, [
@@ -104,8 +105,9 @@ export function Setup() {
       if (line) setLinkMsg(line);
     });
     child.stderr.on('data', (data: Buffer) => {
+      failureMessage = data.toString().trim();
       setLinkStatus('error');
-      setLinkMsg(data.toString().trim());
+      setLinkMsg(failureMessage);
     });
     child.on('close', (code: number) => {
       if (code === 0) {
@@ -113,7 +115,7 @@ export function Setup() {
         setLinkMsg('Bank linked successfully.');
       } else if (code !== null) {
         setLinkStatus('error');
-        setLinkMsg(`Process exited with code ${code}.`);
+        setLinkMsg(failureMessage || `Plaid link process exited with code ${code}.`);
       }
     });
   }
