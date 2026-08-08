@@ -1499,7 +1499,70 @@ describe('Rules', () => {
       expect(f).toContain('Edit: Bills & Utilities');
       expect(f).toContain('Name');
       expect(f).toContain('Flexibility');
+      expect(f).toContain('Monthly $');
+      expect(f).toContain('Budget group');
     });
+  });
+
+  it('shows configured monthly limits in the Categories list', async () => {
+    const r = rules();
+    r.stdin.write('\t');
+    r.stdin.write('\t');
+    r.stdin.write('\t');
+    await waitFor(() => {
+      const f = frame(r);
+      expect(f).toContain('MONTHLY BUDGET');
+      expect(f).toContain('$125');
+    });
+  });
+
+  it('edits a monthly limit in the existing category panel', async () => {
+    const r = rules();
+    r.stdin.write('\t');
+    r.stdin.write('\t');
+    r.stdin.write('\t');
+    await waitFor(() => expect(frame(r)).toContain('Bills & Utilities'));
+    r.stdin.write('\r');
+    await waitFor(() => expect(frame(r)).toContain('Edit: Bills & Utilities'));
+    r.stdin.write('\x1b[B'); // Flexibility
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    r.stdin.write('\x1b[B'); // Monthly $
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    for (const char of '200') {
+      r.stdin.write(char);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    }
+    await waitFor(() => expect(frame(r)).toContain('200'));
+    r.stdin.write('\r');
+    await waitFor(() => expect(frame(r)).toContain('$200'));
+    const row = (await db.execute("SELECT monthly_limit FROM categories WHERE name = 'Bills & Utilities'")).rows[0];
+    expect(row.monthly_limit).toBe(200);
+  });
+
+  it('assigns a category to a shared monthly budget group', async () => {
+    const r = rules();
+    r.stdin.write('\t');
+    r.stdin.write('\t');
+    r.stdin.write('\t');
+    await waitFor(() => expect(frame(r)).toContain('Bills & Utilities'));
+    r.stdin.write('\x1b[B'); // Dining
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    r.stdin.write('\x1b[B'); // Grocery
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    r.stdin.write('\r');
+    await waitFor(() => expect(frame(r)).toContain('Edit: Grocery'));
+    for (let i = 0; i < 3; i++) {
+      r.stdin.write('\x1b[B'); // Flexibility, Monthly $, Budget group
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    }
+    r.stdin.write('\x1b[C'); // None -> Shopping
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    await waitFor(() => expect(frame(r)).toContain('← Shopping  →'));
+    r.stdin.write('\r');
+    await waitFor(() => expect(frame(r)).toContain('Category saved'));
+    const row = (await db.execute("SELECT monthly_limit, budget_group FROM categories WHERE name = 'Grocery'")).rows[0];
+    expect(row.monthly_limit).toBeNull();
+    expect(row.budget_group).toBe('Shopping');
   });
 
   it('Esc in categories edit panel closes without navigating away', async () => {
@@ -2260,4 +2323,3 @@ describe('Dashboard load() race guard', () => {
     }
   });
 });
-

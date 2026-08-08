@@ -431,7 +431,12 @@ export async function getSearchFilteredData(
 export type Rule = { id: number; priority: number; match_type: string; pattern: string; category: string; min_amount: number | null; max_amount: number | null; account_id: string | null };
 export type NameRule = { id: number; match_type: string; pattern: string; replacement: string; min_amount: number | null; max_amount: number | null; account_id: string | null };
 export type TagRuleRow = { id: number; priority: number; match_type: string; pattern: string; tag_id: number; tag_name: string; min_amount: number | null; max_amount: number | null; account_id: string | null };
-export type CategoryDetail = { name: string; flexibility: 'fixed' | 'flexible' | 'discretionary' | null };
+export type CategoryDetail = {
+  name: string;
+  flexibility: 'fixed' | 'flexible' | 'discretionary' | null;
+  monthly_limit: number | null;
+  budget_group: string | null;
+};
 
 export async function getAllRules(): Promise<Rule[]> {
   const result = await db.execute('SELECT id, priority, match_type, pattern, category, min_amount, max_amount, account_id FROM category_rules ORDER BY priority DESC, (account_id IS NULL) ASC, id ASC');
@@ -491,7 +496,7 @@ export async function getFilterOptions(): Promise<FilterOptions> {
 }
 
 export async function getCategoryDetails(): Promise<CategoryDetail[]> {
-  const result = await db.execute('SELECT name, flexibility FROM categories ORDER BY name');
+  const result = await db.execute('SELECT name, flexibility, monthly_limit, budget_group FROM categories ORDER BY name');
   return result.rows as unknown as CategoryDetail[];
 }
 

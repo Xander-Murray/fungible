@@ -7,16 +7,16 @@ import { validateRegex } from './rule-utils.js';
 async function applyAll(): Promise<number> {
   const rules = await loadCategoryRules();
   const txRes = await db.execute(
-    'SELECT id, account_id, name, merchant_name, raw_category, amount, category FROM transactions WHERE manual_category IS NULL'
+    'SELECT id, account_id, name, merchant_name, raw_category, raw_category_detail, amount, category FROM transactions WHERE manual_category IS NULL'
   );
   const rows = txRes.rows as unknown as {
     id: string; account_id: string; name: string; merchant_name: string | null;
-    raw_category: string | null; amount: number; category: string;
+    raw_category: string | null; raw_category_detail: string | null; amount: number; category: string;
   }[];
 
   const updates: { sql: string; args: (string | number | null)[] }[] = [];
   for (const tx of rows) {
-    const cat = categorizeWithRules(rules, tx.name, tx.merchant_name, tx.raw_category, tx.amount, tx.account_id);
+    const cat = categorizeWithRules(rules, tx.name, tx.merchant_name, tx.raw_category, tx.amount, tx.account_id, tx.raw_category_detail);
     if (cat !== tx.category) {
       updates.push({ sql: 'UPDATE transactions SET category = ? WHERE id = ?', args: [cat, tx.id] });
     }
@@ -157,6 +157,46 @@ export async function setCategoryFlexibility(name: string, flexibility: string |
   await db.execute({ sql: 'UPDATE categories SET flexibility = ? WHERE name = ?', args: [flexibility, name] });
 }
 
+export async function setCategoryBudgetConfig(
+  name: string,
+  monthlyLimit: number | null,
+  budgetGroup: string | null,
+): Promise<void> {
+  if (monthlyLimit !== null && (!Number.isFinite(monthlyLimit) || monthlyLimit < 0)) {
+    throw new Error('Monthly limit must be zero or greater');
+  }
+  if (monthlyLimit !== null && budgetGroup !== null) {
+    throw new Error('A category cannot have both a monthly limit and a budget group');
+  }
+  if (budgetGroup === name) throw new Error('A category cannot group into itself');
+
+  if (budgetGroup !== null) {
+    const target = await db.execute({
+      sql: 'SELECT monthly_limit, budget_group FROM categories WHERE name = ?',
+      args: [budgetGroup],
+    });
+    const row = target.rows[0] as unknown as { monthly_limit: number | null; budget_group: string | null } | undefined;
+    if (!row || row.monthly_limit === null || row.budget_group !== null) {
+      throw new Error('Budget group must be a category with its own monthly limit');
+    }
+  }
+
+  if (monthlyLimit === null) {
+    const members = await db.execute({
+      sql: 'SELECT COUNT(*) AS count FROM categories WHERE budget_group = ?',
+      args: [name],
+    });
+    if (Number(members.rows[0].count) > 0 && budgetGroup === null) {
+      throw new Error('Move grouped categories before removing this monthly limit');
+    }
+  }
+
+  await db.execute({
+    sql: 'UPDATE categories SET monthly_limit = ?, budget_group = ? WHERE name = ?',
+    args: [monthlyLimit, budgetGroup, name],
+  });
+}
+
 export async function createCategory(name: string): Promise<void> {
   await db.execute({ sql: 'INSERT OR IGNORE INTO categories (name) VALUES (?)', args: [name] });
 }
@@ -165,17 +205,19 @@ export async function deleteCategory(name: string): Promise<void> {
   await db.batch([
     { sql: "UPDATE transactions SET category = 'Uncategorized', manual_category = NULL WHERE category = ?", args: [name] },
     { sql: 'DELETE FROM hidden_categories WHERE category = ?', args: [name] },
+    { sql: 'UPDATE categories SET budget_group = NULL WHERE budget_group = ?', args: [name] },
     { sql: 'DELETE FROM categories WHERE name = ?', args: [name] },
   ], 'write');
 }
 
 export async function renameCategory(oldName: string, newName: string): Promise<void> {
   await db.batch([
-    { sql: 'INSERT OR IGNORE INTO categories (name, flexibility) SELECT ?, flexibility FROM categories WHERE name = ?', args: [newName, oldName] },
+    { sql: 'INSERT OR IGNORE INTO categories (name, flexibility, monthly_limit, budget_group) SELECT ?, flexibility, monthly_limit, budget_group FROM categories WHERE name = ?', args: [newName, oldName] },
     { sql: 'UPDATE transactions SET category = ? WHERE category = ?', args: [newName, oldName] },
     { sql: 'UPDATE transactions SET manual_category = ? WHERE manual_category = ?', args: [newName, oldName] },
     { sql: 'UPDATE category_rules SET category = ? WHERE category = ?', args: [newName, oldName] },
     { sql: 'UPDATE hidden_categories SET category = ? WHERE category = ?', args: [newName, oldName] },
+    { sql: 'UPDATE categories SET budget_group = ? WHERE budget_group = ?', args: [newName, oldName] },
     { sql: 'DELETE FROM categories WHERE name = ?', args: [oldName] },
   ], 'write');
 }

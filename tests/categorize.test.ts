@@ -62,9 +62,14 @@ describe('Plaid category fallback', () => {
     expect(await categorize('utilities', null, 'Utilities')).toBe('Bills & Utilities');
     expect(await categorize('phone', null, 'Phone/Cable')).toBe('Bills & Utilities');
     expect(await categorize('food', null, 'Food & Dining')).toBe('Food & Drink');
-    expect(await categorize('groceries', null, 'Groceries')).toBe('Food & Drink');
+    expect(await categorize('groceries', null, 'Groceries')).toBe('Groceries');
     expect(await categorize('doctor', null, 'Healthcare')).toBe('Medical');
     expect(await categorize('other', null, 'OTHER')).toBe('Uncategorized');
+  });
+
+  it('uses reliable Plaid detail for budget-specific grocery and gas categories', async () => {
+    expect(await categorize('market', null, 'FOOD_AND_DRINK', undefined, undefined, 'FOOD_AND_DRINK_GROCERIES')).toBe('Groceries');
+    expect(await categorize('fuel', null, 'TRANSPORTATION', undefined, undefined, 'TRANSPORTATION_GAS')).toBe('Gas');
   });
 });
 

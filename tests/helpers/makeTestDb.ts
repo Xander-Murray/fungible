@@ -58,7 +58,9 @@ const SCHEMA = `
 
   CREATE TABLE categories (
     name TEXT PRIMARY KEY,
-    flexibility TEXT CHECK(flexibility IN ('fixed','flexible','discretionary'))
+    flexibility TEXT CHECK(flexibility IN ('fixed','flexible','discretionary')),
+    monthly_limit REAL,
+    budget_group TEXT
   );
 
   CREATE TABLE tags (

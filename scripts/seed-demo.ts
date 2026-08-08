@@ -114,11 +114,14 @@ const txns: [string, string, string, string, string | null, number, string][] = 
 ];
 
 await db.batch(
-  txns.map(([id, acct, date, name, merchant, amount, category]) => ({
-    sql: `INSERT OR IGNORE INTO transactions (id, account_id, date, name, merchant_name, amount, category, raw_category, pending)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`,
-    args: [id, acct, date, name, merchant, amount, category, category],
-  })),
+  txns.map(([id, acct, date, name, merchant, amount, category]) => {
+    const classification = category === 'Transfer' ? 'TRANSFER' : category === 'Income' ? 'INCOME' : 'EXPENSE';
+    return {
+      sql: `INSERT OR IGNORE INTO transactions (id, account_id, date, name, merchant_name, amount, category, raw_category, pending, classification)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+      args: [id, acct, date, name, merchant, amount, category, category, classification],
+    };
+  }),
   'write',
 );
 

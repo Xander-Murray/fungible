@@ -40,7 +40,7 @@ export async function seedTuiData(db: Client) {
       `INSERT INTO categories (name, flexibility) VALUES ('Grocery', 'flexible')`,
       `INSERT INTO categories (name, flexibility) VALUES ('Dining', 'discretionary')`,
       `INSERT INTO categories (name, flexibility) VALUES ('Bills & Utilities', 'fixed')`,
-      `INSERT INTO categories (name, flexibility) VALUES ('Shopping', 'discretionary')`,
+      `INSERT INTO categories (name, flexibility, monthly_limit) VALUES ('Shopping', 'discretionary', 125)`,
       `INSERT INTO categories (name, flexibility) VALUES ('Income', NULL)`,
 
       // Category rule

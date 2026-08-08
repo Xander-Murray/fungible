@@ -71,17 +71,17 @@ export async function seedRules(): Promise<{ rules: number; recategorized: numbe
   );
 
   const uncategorizedResult = await db.execute({
-    sql: 'SELECT id, account_id, name, merchant_name, raw_category, amount FROM transactions WHERE category = ? AND manual_category IS NULL',
+    sql: 'SELECT id, account_id, name, merchant_name, raw_category, raw_category_detail, amount FROM transactions WHERE category = ? AND manual_category IS NULL',
     args: ['Uncategorized'],
   });
   const uncategorized = uncategorizedResult.rows as unknown as {
-    id: string; account_id: string; name: string; merchant_name: string | null; raw_category: string | null; amount: number;
+    id: string; account_id: string; name: string; merchant_name: string | null; raw_category: string | null; raw_category_detail: string | null; amount: number;
   }[];
 
   let recategorized = 0;
   const updates: { sql: string; args: (string | number | null)[] }[] = [];
   for (const tx of uncategorized) {
-    const cat = await categorize(tx.name, tx.merchant_name, tx.raw_category, tx.amount, tx.account_id);
+    const cat = await categorize(tx.name, tx.merchant_name, tx.raw_category, tx.amount, tx.account_id, tx.raw_category_detail);
     if (cat !== 'Uncategorized') {
       updates.push({ sql: 'UPDATE transactions SET category = ? WHERE id = ?', args: [cat, tx.id] });
       recategorized++;

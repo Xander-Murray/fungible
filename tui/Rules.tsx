@@ -4,12 +4,12 @@ import { getAllRules, getAllNameRules, getAllTagRules, getAllCategories, getCate
 import {
   getUncategorizedCount, deleteCategoryRule, deleteNameRule,
   saveCategoryRule, saveNameRule, saveTagRule, deleteTagRule, setCategoryFlexibility,
-  deleteCategory, renameCategory, createCategory,
+  deleteCategory, renameCategory, createCategory, setCategoryBudgetConfig,
 } from '../core/rules.js';
 import { getTagOptions, type TagOption } from '../core/tags.js';
 import { countTagRuleMatches, type TagMatchType } from '../core/tag-rules.js';
 import type { Screen, TxFilter } from './App.js';
-import { truncate, Divider } from './fmt.js';
+import { truncate, Divider, fmt } from './fmt.js';
 import { handleNavKey } from './nav.js';
 import { useTerminalWidth, FLEX_COLORS, C_ACCENT, C_DIM, C_MANUAL, C_NEUTRAL, C_POSITIVE, C_WARNING } from './ui.js';
 import { useRefreshKey } from './RefreshContext.js';
@@ -19,7 +19,7 @@ import { ModalPanel, TextInput, SelectableRow, usePagination, useStatusMessage, 
 type Flexibility = 'fixed' | 'flexible' | 'discretionary' | null;
 const FLEX_CYCLE: Flexibility[] = [null, 'fixed', 'flexible', 'discretionary'];
 type Mode = 'list' | 'search' | 'rule-form' | 'name-rule-form' | 'tag-rule-form' | 'add-category-name' | 'edit-category';
-type CatEditField = 'name' | 'flexibility' | 'hidden';
+type CatEditField = 'name' | 'flexibility' | 'monthly-limit' | 'budget-group' | 'hidden';
 type RuleField = 'pattern' | 'type' | 'min' | 'max' | 'category' | 'account';
 type NameRuleField = 'pattern' | 'type' | 'min' | 'max' | 'replacement' | 'account';
 type TagRuleField = 'type' | 'pattern' | 'min' | 'max' | 'tag' | 'account';
@@ -84,6 +84,8 @@ export function Rules({ onNavigate, isActive, showHints }: { onNavigate: (s: Scr
 
   // Category edit panel state
   const [catEditField, setCatEditField] = useState<CatEditField>('flexibility');
+  const [catLimitInput, setCatLimitInput] = useState('');
+  const [catBudgetGroupDraft, setCatBudgetGroupDraft] = useState<string | null>(null);
 
   // Unified rule form field cursor
   const [ruleField, setRuleField] = useState<RuleField>('pattern');
@@ -106,9 +108,8 @@ export function Rules({ onNavigate, isActive, showHints }: { onNavigate: (s: Scr
   const namesFlex = Math.max(20, inner - 27);
   const namePatW  = Math.max(12, Math.floor(namesFlex * 0.5));
   const nameReplW = Math.max(10, namesFlex - namePatW);
-  // Categories: [sel=2] gap [name] gap [flex=14] gap [hidden=6]
-  // reserve: 2+14+6 + 3gaps*2 = 28
-  const catNameW = Math.max(12, inner - 28);
+  // Categories: [sel=2] [name] [flex=14] [budget=24] [hidden=6].
+  const catNameW = Math.max(12, inner - 54);
 
   function load() {
     void getAllRules().then(setRules);
@@ -235,6 +236,27 @@ export function Rules({ onNavigate, isActive, showHints }: { onNavigate: (s: Scr
     setNewTagPattern('');
     setMode('list');
     load();
+  }
+
+  async function saveCategoryEdit() {
+    const cat = catDetails[catListCursor];
+    if (!cat) return;
+    const rawLimit = catLimitInput.trim();
+    if (catBudgetGroupDraft === null && rawLimit && !/^\d+(?:\.\d{0,2})?$/.test(rawLimit)) {
+      showStatus('Monthly limit must be a non-negative dollar amount', 4000);
+      return;
+    }
+    const monthlyLimit = catBudgetGroupDraft === null && rawLimit !== '' ? Number(rawLimit) : null;
+    try {
+      await setCategoryBudgetConfig(cat.name, monthlyLimit, catBudgetGroupDraft);
+      const trimmed = renameCatInput.trim();
+      if (trimmed && trimmed !== cat.name) await renameCategory(cat.name, trimmed);
+      showStatus(trimmed && trimmed !== cat.name ? `Renamed to "${trimmed}"` : 'Category saved');
+      setMode('list');
+      load();
+    } catch (e) {
+      showStatus(e instanceof Error ? e.message : 'Failed to save category', 4000);
+    }
   }
 
   function handleDeleteTagRule(id: number) {
@@ -381,26 +403,20 @@ export function Rules({ onNavigate, isActive, showHints }: { onNavigate: (s: Scr
           setCatListCursor((c) => Math.max(0, c - 1));
         }
         if (key.return && catDetails[catListCursor]) {
-          setRenameCatInput(categories[catListCursor] ?? '');
+          const cat = catDetails[catListCursor];
+          setRenameCatInput(cat.name);
+          setCatLimitInput(cat.monthly_limit === null ? '' : String(cat.monthly_limit));
+          setCatBudgetGroupDraft(cat.budget_group);
           setCatEditField('name');
           setMode('edit-category');
           return;
         }
       }
     } else if (mode === 'edit-category') {
-      const CAT_FIELDS: CatEditField[] = ['name', 'flexibility', 'hidden'];
+      const CAT_FIELDS: CatEditField[] = ['name', 'flexibility', 'monthly-limit', 'budget-group', 'hidden'];
       if (key.escape) { setMode('list'); return; }
       if (key.return) {
-        const cat = catDetails[catListCursor];
-        if (cat) {
-          const trimmed = renameCatInput.trim();
-          if (trimmed && trimmed !== cat.name) {
-            renameCategory(cat.name, trimmed);
-            showStatus(`Renamed to "${trimmed}"`);
-            load();
-          }
-        }
-        setMode('list');
+        void saveCategoryEdit();
         return;
       }
       if (key.upArrow) { setCatEditField((f) => CAT_FIELDS[Math.max(0, CAT_FIELDS.indexOf(f) - 1)]); return; }
@@ -418,6 +434,32 @@ export function Rules({ onNavigate, isActive, showHints }: { onNavigate: (s: Scr
           const next = FLEX_CYCLE[(idx + dir + FLEX_CYCLE.length) % FLEX_CYCLE.length];
           setCategoryFlexibility(cat.name, next);
           load();
+        }
+        return;
+      }
+      if (catEditField === 'monthly-limit') {
+        if (key.backspace || key.delete) { setCatLimitInput((p) => p.slice(0, -1)); return; }
+        if (/^[\d.]$/.test(input)) {
+          setCatLimitInput((p) => p + input);
+          setCatBudgetGroupDraft(null);
+          return;
+        }
+        return;
+      }
+      if (catEditField === 'budget-group' && (key.leftArrow || key.rightArrow)) {
+        const cat = catDetails[catListCursor];
+        if (cat) {
+          const options: (string | null)[] = [
+            null,
+            ...catDetails
+              .filter((candidate) => candidate.name !== cat.name && candidate.monthly_limit !== null && candidate.budget_group === null)
+              .map((candidate) => candidate.name),
+          ];
+          const current = options.indexOf(catBudgetGroupDraft);
+          const dir = key.leftArrow ? -1 : 1;
+          const next = options[(Math.max(0, current) + dir + options.length) % options.length];
+          setCatBudgetGroupDraft(next);
+          if (next !== null) setCatLimitInput('');
         }
         return;
       }
@@ -678,6 +720,7 @@ export function Rules({ onNavigate, isActive, showHints }: { onNavigate: (s: Scr
           <ColumnHeader hasCursor marginTop={0} columns={[
             { label: 'NAME', width: catNameW },
             { label: 'FLEXIBILITY', width: 14 },
+            { label: 'MONTHLY BUDGET', width: 24 },
             { label: 'HIDDEN' },
           ]} />
           <Box flexDirection="column">
@@ -691,6 +734,11 @@ export function Rules({ onNavigate, isActive, showHints }: { onNavigate: (s: Scr
                   {cat.flexibility
                     ? <Text color={flexColor} dimColor={!isSelected}>{cat.flexibility.padEnd(14)}</Text>
                     : <Text dimColor>{'—'.padEnd(14)}</Text>}
+                  {cat.monthly_limit !== null
+                    ? <Text color={C_POSITIVE} dimColor={!isSelected}>{fmt(cat.monthly_limit, 0).padEnd(24)}</Text>
+                    : cat.budget_group
+                      ? <Text color={C_MANUAL} dimColor={!isSelected}>{truncate(`→ ${cat.budget_group}`, 24).padEnd(24)}</Text>
+                      : <Text dimColor>{'—'.padEnd(24)}</Text>}
                   {isHidden
                     ? <Text color={C_WARNING} dimColor={!isSelected}>hidden</Text>
                     : <Text dimColor>—</Text>}
@@ -717,6 +765,8 @@ export function Rules({ onNavigate, isActive, showHints }: { onNavigate: (s: Scr
             <Box marginTop={1} flexDirection="column" gap={1}>
               <EditTextField label="Name" active={catEditField === 'name'} value={renameCatInput} color={C_WARNING} emptyText="—" />
               <EditToggleField label="Flexibility" active={catEditField === 'flexibility'} value={cat.flexibility ?? '—'} valueColor={flexColor ?? C_DIM} />
+              <EditTextField label="Monthly $" active={catEditField === 'monthly-limit'} value={catLimitInput} color={C_POSITIVE} placeholder="none" emptyText="—" />
+              <EditToggleField label="Budget group" active={catEditField === 'budget-group'} value={catBudgetGroupDraft ?? '—'} valueColor={catBudgetGroupDraft ? C_MANUAL : C_DIM} />
               <Box gap={2}>
                 <Text color={catEditField === 'hidden' ? C_ACCENT : C_NEUTRAL}>{'Hidden'.padEnd(12)}</Text>
                 <Text color={catEditField === 'hidden' ? C_ACCENT : (isHidden ? C_WARNING : C_DIM)}>

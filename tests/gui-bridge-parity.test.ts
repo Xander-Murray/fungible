@@ -58,6 +58,9 @@ const EXPECTED_UNBRIDGED: Record<string, string> = {
   // settings.setPretaxMonthly) rather than the raw getSetting/setSetting functions.
   getSetting: 'GUI exposes typed wrappers (getPretaxMonthly/setPretaxMonthly) via settings namespace instead of generic access',
   setSetting: 'GUI exposes typed wrappers (getPretaxMonthly/setPretaxMonthly) via settings namespace instead of generic access',
+
+  // Personal budgeting is currently scoped to the TUI.
+  setCategoryBudgetConfig: 'monthly category budget editing is TUI-only',
 };
 
 function collectTuiCoreImports(): Map<string, string[]> {

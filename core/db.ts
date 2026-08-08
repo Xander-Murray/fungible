@@ -123,6 +123,8 @@ export async function initDb() {
     'ALTER TABLE name_rules ADD COLUMN min_amount REAL',
     'ALTER TABLE name_rules ADD COLUMN max_amount REAL',
     "ALTER TABLE categories ADD COLUMN flexibility TEXT CHECK(flexibility IN ('fixed','flexible','discretionary'))",
+    'ALTER TABLE categories ADD COLUMN monthly_limit REAL',
+    'ALTER TABLE categories ADD COLUMN budget_group TEXT',
     'ALTER TABLE plaid_items ADD COLUMN last_synced_at INTEGER',
     'ALTER TABLE plaid_items ADD COLUMN days_requested INTEGER',
     'ALTER TABLE accounts ADD COLUMN nickname TEXT',
@@ -153,12 +155,32 @@ export async function initDb() {
     END
     WHERE classification IS NULL`);
 
+  // Seed categories before applying defaults so a brand-new database receives
+  // its flexibility and budget configuration on the first launch.
+  const defaultCategories = [
+    'Income', 'Transfer', 'Food & Drink', 'Dining', 'Shopping',
+    'Transportation', 'Transportation Energy', 'Gas', 'EV Charging',
+    'Grocery', 'Groceries', 'Misc', 'Miscellaneous', 'Travel',
+    'Bills & Utilities', 'Insurance', 'Medical', 'Personal Care',
+    'Childcare', 'Entertainment', 'Home', 'Services', 'Fees',
+    'Government', 'Taxes', 'Loan Payment', 'Uncategorized',
+  ];
+  await db.batch(
+    defaultCategories.map((cat) => ({
+      sql: 'INSERT OR IGNORE INTO categories (name) VALUES (?)',
+      args: [cat],
+    })),
+    'write',
+  );
+
   // Seed default flexibility tiers (only where not already set)
   const flexDefaults: [string, string][] = [
     ['Rent', 'fixed'], ['Insurance', 'fixed'], ['Childcare', 'fixed'],
     ['Loan Payment', 'fixed'], ['Taxes', 'fixed'], ['Government', 'fixed'],
     ['Bills & Utilities', 'fixed'], ['Medical', 'fixed'],
-    ['Food & Drink', 'flexible'], ['Grocery', 'flexible'], ['Transportation', 'flexible'],
+    ['Food & Drink', 'flexible'], ['Grocery', 'flexible'], ['Groceries', 'flexible'],
+    ['Transportation', 'flexible'], ['Transportation Energy', 'flexible'],
+    ['Gas', 'flexible'], ['EV Charging', 'flexible'], ['Misc', 'flexible'], ['Miscellaneous', 'flexible'],
     ['Personal Care', 'flexible'], ['Home', 'flexible'], ['Services', 'flexible'],
     ['Shopping', 'discretionary'], ['Entertainment', 'discretionary'],
     ['Travel', 'discretionary'], ['Dining', 'discretionary'], ['Fees', 'discretionary'],
@@ -170,6 +192,41 @@ export async function initDb() {
     })),
     'write',
   );
+
+  // Apply the initial personal budget once. The marker lets users later clear
+  // or change a limit without initDb restoring the defaults on every launch.
+  const budgetSeed = await db.execute("SELECT value FROM settings WHERE key = 'personal_budget_defaults_v1'");
+  if (budgetSeed.rows.length === 0) {
+    const limits: [string, number][] = [
+      ['Food & Drink', 180],
+      ['Shopping', 125],
+      ['Entertainment', 100],
+      ['Groceries', 150],
+      ['Transportation Energy', 175],
+      ['Miscellaneous', 75],
+    ];
+    const groups: [string, string][] = [
+      ['Dining', 'Food & Drink'],
+      ['Grocery', 'Groceries'],
+      ['Gas', 'Transportation Energy'],
+      ['EV Charging', 'Transportation Energy'],
+      ['Misc', 'Miscellaneous'],
+    ];
+    await db.batch([
+      ...limits.map(([name, limit]) => ({
+        sql: 'UPDATE categories SET monthly_limit = ?, budget_group = NULL WHERE name = ? AND monthly_limit IS NULL AND budget_group IS NULL',
+        args: [limit, name],
+      })),
+      ...groups.map(([name, group]) => ({
+        sql: 'UPDATE categories SET budget_group = ? WHERE name = ? AND monthly_limit IS NULL AND budget_group IS NULL',
+        args: [group, name],
+      })),
+      {
+        sql: "INSERT INTO settings (key, value) VALUES ('personal_budget_defaults_v1', '1')",
+        args: [],
+      },
+    ], 'write');
+  }
 
   // Migrate plaintext Plaid access tokens to encrypted form (idempotent)
   const itemsRes = await db.execute('SELECT item_id, access_token FROM plaid_items');
@@ -212,18 +269,4 @@ export async function initDb() {
     await db.batch(rows, 'write');
   }
 
-  // Seed default categories
-  const defaultCategories = [
-    'Income', 'Transfer', 'Food & Drink', 'Shopping', 'Transportation',
-    'Travel', 'Bills & Utilities', 'Insurance', 'Medical', 'Personal Care',
-    'Childcare', 'Entertainment', 'Home', 'Services', 'Fees',
-    'Government', 'Taxes', 'Loan Payment', 'Uncategorized',
-  ];
-  await db.batch(
-    defaultCategories.map((cat) => ({
-      sql: 'INSERT OR IGNORE INTO categories (name) VALUES (?)',
-      args: [cat],
-    })),
-    'write',
-  );
 }

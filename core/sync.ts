@@ -71,7 +71,7 @@ export async function syncTransactions(accessToken: string, itemId: string) {
       [...added, ...modified].map((tx) => {
         const rawCategory = tx.personal_finance_category?.primary ?? null;
         const rawCategoryDetail = tx.personal_finance_category?.detailed ?? null;
-        const category = categorizeWithRules(catRules, tx.name, tx.merchant_name ?? null, rawCategory, tx.amount, tx.account_id);
+        const category = categorizeWithRules(catRules, tx.name, tx.merchant_name ?? null, rawCategory, tx.amount, tx.account_id, rawCategoryDetail);
         const displayName = applyNameRulesWithRules(nameRules, tx.name, tx.amount, tx.account_id);
         const account = accounts.get(tx.account_id);
         const classification = classifyTransaction({

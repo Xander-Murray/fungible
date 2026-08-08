@@ -20,15 +20,15 @@ export async function setTransactionCategory(id: string, category: string): Prom
 
 export async function clearTransactionOverride(id: string): Promise<void> {
   const result = await db.execute({
-    sql: 'SELECT account_id, name, merchant_name, raw_category, amount FROM transactions WHERE id = ?',
+    sql: 'SELECT account_id, name, merchant_name, raw_category, raw_category_detail, amount FROM transactions WHERE id = ?',
     args: [id],
   });
   if (result.rows.length === 0) return;
   const tx = result.rows[0] as unknown as {
-    account_id: string; name: string; merchant_name: string | null; raw_category: string | null; amount: number;
+    account_id: string; name: string; merchant_name: string | null; raw_category: string | null; raw_category_detail: string | null; amount: number;
   };
   const rules = await loadCategoryRules();
-  const cat = categorizeWithRules(rules, tx.name, tx.merchant_name, tx.raw_category, tx.amount, tx.account_id);
+  const cat = categorizeWithRules(rules, tx.name, tx.merchant_name, tx.raw_category, tx.amount, tx.account_id, tx.raw_category_detail);
   await db.execute({
     sql: 'UPDATE transactions SET category = ?, manual_category = NULL WHERE id = ?',
     args: [cat, id],
@@ -141,19 +141,19 @@ export async function clearOverridesBulk(ids: string[]): Promise<void> {
   if (ids.length === 0) return;
   const placeholders = ids.map(() => '?').join(',');
   const txRes = await db.execute({
-    sql: `SELECT id, account_id, name, merchant_name, raw_category, amount FROM transactions WHERE id IN (${placeholders}) AND manual_category IS NOT NULL`,
+    sql: `SELECT id, account_id, name, merchant_name, raw_category, raw_category_detail, amount FROM transactions WHERE id IN (${placeholders}) AND manual_category IS NOT NULL`,
     args: ids,
   });
   const rows = txRes.rows as unknown as {
     id: string; account_id: string; name: string; merchant_name: string | null;
-    raw_category: string | null; amount: number;
+    raw_category: string | null; raw_category_detail: string | null; amount: number;
   }[];
   if (rows.length === 0) return;
   const rules = await loadCategoryRules();
   await db.batch(
     rows.map((tx) => ({
       sql: 'UPDATE transactions SET category = ?, manual_category = NULL WHERE id = ?',
-      args: [categorizeWithRules(rules, tx.name, tx.merchant_name, tx.raw_category, tx.amount, tx.account_id), tx.id],
+      args: [categorizeWithRules(rules, tx.name, tx.merchant_name, tx.raw_category, tx.amount, tx.account_id, tx.raw_category_detail), tx.id],
     })),
     'write',
   );
