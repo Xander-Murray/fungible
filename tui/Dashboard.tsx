@@ -22,6 +22,7 @@ import { useRefreshKey } from './RefreshContext.js';
 import { useFilter } from './FilterContext.js';
 import { useLoadGuard } from './useLoadGuard.js';
 import { mergeFilters, type Filter } from '../core/filters.js';
+import { getBudgetDashboardStatus, type BudgetDashboardStatus, type WeeklyBudgetStatus, type BudgetStatus } from '../core/budget.js';
 
 const BAR_WIDTH = 20;
 
@@ -50,6 +51,16 @@ function fmtDelta(delta: number): string {
   return fmtSigned(delta, 0);
 }
 
+function accountabilityColor(status: WeeklyBudgetStatus | BudgetStatus | 'ON_TRACK' | 'OFF_TRACK'): string {
+  if (status === 'GOOD' || status === 'ON_TRACK') return C_POSITIVE;
+  if (status === 'OVER_BUDGET' || status === 'OFF_TRACK') return C_NEGATIVE;
+  return C_WARNING;
+}
+
+function statusLabel(status: string): string {
+  return status.replaceAll('_', ' ');
+}
+
 
 const FLEX_TIERS: Array<{ key: keyof FlexSummary; label: string; color: string }> = [
   { key: 'fixed',         label: 'Fixed',        color: FLEX_COLORS.fixed         },
@@ -58,7 +69,7 @@ const FLEX_TIERS: Array<{ key: keyof FlexSummary; label: string; color: string }
   { key: 'untagged',      label: 'Untagged',      color: C_NEUTRAL                 },
 ];
 
-export function Dashboard({ onNavigate, isActive, initialFilter, showHints }: { onNavigate: (s: Screen, filter?: TxFilter) => void; isActive?: boolean; initialFilter?: TxFilter; showHints: boolean }) {
+export function Dashboard({ onNavigate, isActive, initialFilter, showHints, budgetReferenceDate }: { onNavigate: (s: Screen, filter?: TxFilter) => void; isActive?: boolean; initialFilter?: TxFilter; showHints: boolean; budgetReferenceDate?: Date }) {
   const refreshKey = useRefreshKey();
   const { filter: sharedFilter, setFilter } = useFilter();
   const now = new Date();
@@ -89,6 +100,8 @@ export function Dashboard({ onNavigate, isActive, initialFilter, showHints }: { 
   const [merchantRows, setMerchantRows] = useState<MerchantSummaryRow[]>([]);
   const [merchantCursor, setMerchantCursor] = useState(0);
   const [merchantDrill, setMerchantDrill] = useState<{ category: string; from: string; to: string } | null>(null);
+  const [budgetData, setBudgetData] = useState<BudgetDashboardStatus | null>(null);
+  const accountabilityDate = useMemo(() => budgetReferenceDate ?? new Date(), [budgetReferenceDate?.getTime()]);
 
   // Search
   const [search,          setSearch]          = useState(initialFilter?.search ?? '');
@@ -148,6 +161,10 @@ export function Dashboard({ onNavigate, isActive, initialFilter, showHints }: { 
     load(range, anchor, queryFilter);
     setCatCursor(0);
   }, [range, anchor.toISOString().slice(0, 10), queryFilter, refreshKey]);
+
+  useEffect(() => {
+    void getBudgetDashboardStatus(accountabilityDate).then(setBudgetData);
+  }, [accountabilityDate.getTime(), refreshKey]);
 
   useEffect(() => {
     if (!scorecardMode) { setCatDrift(null); setFlexDrift(null); setAcctDrift(null); return; }
@@ -265,6 +282,7 @@ export function Dashboard({ onNavigate, isActive, initialFilter, showHints }: { 
   const dashAcctNameW = Math.max(12, inner - 28);
   // Merchants: [sel=2] gap [name] gap [amount=10] gap [count=6] gap [pct=6]
   const merchantNameW = Math.max(12, inner - 30);
+  const budgetBarW = Math.max(10, Math.min(30, inner - 52));
 
   useInput((input, key) => {
     if (merchantDrill) {
@@ -513,6 +531,67 @@ export function Dashboard({ onNavigate, isActive, initialFilter, showHints }: { 
       )}
 
       <Box marginTop={1}><Divider /></Box>
+
+      {budgetData && (
+        <Box flexDirection="column" marginTop={1}>
+          <SectionHeader>PERSONAL BUDGET</SectionHeader>
+          <Box marginTop={1} gap={2}>
+            <Text bold>WEEKLY CHASE</Text>
+            <Text bold color={accountabilityColor(budgetData.weekly.status)}>
+              {statusLabel(budgetData.weekly.status)}
+            </Text>
+            <Text>{fmt(budgetData.weekly.spent)} / {fmt(budgetData.weekly.limit)}</Text>
+            <Text color={accountabilityColor(budgetData.weekly.status)}>
+              {bar(budgetData.weekly.spent, budgetData.weekly.limit, budgetBarW)}
+            </Text>
+            <Text bold color={budgetData.weekly.remaining >= 0 ? C_POSITIVE : C_NEGATIVE}>
+              {fmt(budgetData.weekly.remaining)} remaining
+            </Text>
+          </Box>
+          <Box marginTop={1} gap={2}>
+            <Text dimColor>VERIFIED INCOME</Text>
+            <Text bold color={C_POSITIVE}>{fmt(budgetData.verifiedIncome)}</Text>
+            <Text dimColor>GOALS · {fmt(budgetData.goals.combinedMonthlyTarget)}/mo minimum</Text>
+          </Box>
+          <Box flexDirection="column">
+            {budgetData.goals.goals.map((goal) => (
+              <Box key={goal.key} gap={2}>
+                <Text>{goal.label.padEnd(18)}</Text>
+                <Text color={accountabilityColor(goal.status)}>
+                  {fmt(goal.contributed)} / {fmt(goal.expectedToDate)} due · {fmt(goal.monthlyTarget)}/mo · {goal.completedWeeks} complete · {goal.missedWeeks} missed · {statusLabel(goal.status)}
+                </Text>
+              </Box>
+            ))}
+          </Box>
+          <Box marginTop={1} gap={2}>
+            <Text dimColor>FIXED</Text>
+            {budgetData.fixedObligations.map((item) => (
+              <Text key={item.key}>
+                {item.label} {item.spent > 0 ? fmt(item.spent) : '—'} / {item.target === null ? 'not set' : `${fmt(item.target)}/mo`}
+              </Text>
+            ))}
+          </Box>
+          <Box marginTop={1} gap={2}>
+            <Text bold>MONTHLY FLEXIBLE</Text>
+            <Text>{fmt(budgetData.monthly.spent)} / {fmt(budgetData.monthly.limit)}</Text>
+            <Text color={accountabilityColor(budgetData.monthly.status)} bold>
+              {fmt(budgetData.monthly.remaining)} remaining · {Math.round(budgetData.monthly.percentage)}% · {statusLabel(budgetData.monthly.status)}
+            </Text>
+          </Box>
+          <Box flexDirection="column">
+            {budgetData.monthly.categories.map((category) => (
+              <Box key={category.category} gap={2}>
+                <Text>{category.category.padEnd(24)}</Text>
+                <Text>{`${fmt(category.spent)} / ${fmt(category.limit)}`.padStart(20)}</Text>
+                <Text color={accountabilityColor(category.status)}>
+                  {`${fmt(category.remaining)} left · ${Math.round(category.percentage)}% · ${statusLabel(category.status)}`}
+                </Text>
+              </Box>
+            ))}
+          </Box>
+          <Box marginTop={1}><Divider /></Box>
+        </Box>
+      )}
 
       {view === 'account' ? (
         <Box flexDirection="column" marginTop={1}>

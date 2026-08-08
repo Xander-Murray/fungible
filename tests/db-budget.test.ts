@@ -46,6 +46,14 @@ describe('personal budget database migration', () => {
 
     const weeklyLimit = await db.execute("SELECT value FROM settings WHERE key = 'budget_weekly_chase_limit'");
     expect(weeklyLimit.rows[0]).toMatchObject({ value: '185' });
+    const recurring = await db.execute(`SELECT key, value FROM settings
+      WHERE key IN ('budget_roth_weekly_target', 'budget_savings_weekly_target', 'budget_tesla_payment_target')
+      ORDER BY key`);
+    expect(recurring.rows).toMatchObject([
+      { key: 'budget_roth_weekly_target', value: '50' },
+      { key: 'budget_savings_weekly_target', value: '75' },
+      { key: 'budget_tesla_payment_target', value: '466' },
+    ]);
   });
 
   it('does not restore defaults over user changes on later initialization', async () => {

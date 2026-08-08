@@ -161,6 +161,7 @@ export async function initDb() {
     'Income', 'Transfer', 'Food & Drink', 'Dining', 'Shopping',
     'Transportation', 'Transportation Energy', 'Gas', 'EV Charging',
     'Grocery', 'Groceries', 'Misc', 'Miscellaneous', 'Travel',
+    'Roth IRA', 'General Savings', 'Tesla Payment', 'Tesla Insurance',
     'Bills & Utilities', 'Insurance', 'Medical', 'Personal Care',
     'Childcare', 'Entertainment', 'Home', 'Services', 'Fees',
     'Government', 'Taxes', 'Loan Payment', 'Uncategorized',
@@ -176,6 +177,8 @@ export async function initDb() {
   // Seed default flexibility tiers (only where not already set)
   const flexDefaults: [string, string][] = [
     ['Rent', 'fixed'], ['Insurance', 'fixed'], ['Childcare', 'fixed'],
+    ['Roth IRA', 'fixed'], ['General Savings', 'fixed'],
+    ['Tesla Payment', 'fixed'], ['Tesla Insurance', 'fixed'],
     ['Loan Payment', 'fixed'], ['Taxes', 'fixed'], ['Government', 'fixed'],
     ['Bills & Utilities', 'fixed'], ['Medical', 'fixed'],
     ['Food & Drink', 'flexible'], ['Grocery', 'flexible'], ['Groceries', 'flexible'],
@@ -230,6 +233,11 @@ export async function initDb() {
 
   await db.execute(`INSERT OR IGNORE INTO settings (key, value)
     VALUES ('budget_weekly_chase_limit', '185')`);
+  await db.batch([
+    "INSERT OR IGNORE INTO settings (key, value) VALUES ('budget_roth_weekly_target', '50')",
+    "INSERT OR IGNORE INTO settings (key, value) VALUES ('budget_savings_weekly_target', '75')",
+    "INSERT OR IGNORE INTO settings (key, value) VALUES ('budget_tesla_payment_target', '466')",
+  ], 'write');
 
   // Migrate plaintext Plaid access tokens to encrypted form (idempotent)
   const itemsRes = await db.execute('SELECT item_id, access_token FROM plaid_items');

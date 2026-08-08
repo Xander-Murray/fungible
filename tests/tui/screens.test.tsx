@@ -85,7 +85,7 @@ afterEach(() => cleanup());
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 
 describe('Dashboard', () => {
-  function dash(overrides?: Parameters<typeof Dashboard>[0]) {
+  function dash(overrides?: Partial<Parameters<typeof Dashboard>[0]>) {
     return render(
       <W>
         <Dashboard onNavigate={noop} showHints={false} initialFilter={MAY_FILTER} {...overrides} />
@@ -123,6 +123,45 @@ describe('Dashboard', () => {
     await waitFor(() => expect(frame(r)).toContain('SPENDING BY CATEGORY'));
   });
 
+  it('shows integrated weekly, monthly, income, obligations, and savings accountability', async () => {
+    await db.batch([
+      "UPDATE accounts SET institution_name = 'Chase' WHERE id = 'test-credit'",
+      "UPDATE transactions SET classification = 'INCOME' WHERE id = 'tx-income'",
+      "UPDATE transactions SET classification = 'EXPENSE' WHERE id != 'tx-income'",
+      "INSERT INTO categories (name, flexibility, monthly_limit) VALUES ('Food & Drink', 'flexible', 180)",
+      "INSERT INTO categories (name, flexibility, monthly_limit) VALUES ('Groceries', 'flexible', 150)",
+      "INSERT INTO categories (name, flexibility, monthly_limit) VALUES ('Entertainment', 'discretionary', 100)",
+      "INSERT INTO categories (name, flexibility, monthly_limit) VALUES ('Transportation Energy', 'flexible', 175)",
+      "INSERT INTO categories (name, flexibility, monthly_limit) VALUES ('Miscellaneous', 'flexible', 75)",
+      "UPDATE categories SET budget_group = 'Food & Drink' WHERE name = 'Dining'",
+      "UPDATE categories SET budget_group = 'Groceries' WHERE name = 'Grocery'",
+      "INSERT INTO accounts (id, name, type, subtype) VALUES ('goal-savings', 'General Savings', 'depository', 'savings')",
+      "INSERT INTO accounts (id, name, type, subtype) VALUES ('goal-roth', 'Fidelity Roth IRA', 'investment', 'roth')",
+      "INSERT INTO transactions (id, account_id, date, name, amount, category, classification, pending, ignored) VALUES ('roth-1', 'goal-roth', '2026-05-01', 'Roth IRA', -50, 'Roth IRA', 'INVESTMENT', 0, 0)",
+      "INSERT INTO transactions (id, account_id, date, name, amount, category, classification, pending, ignored) VALUES ('roth-2', 'goal-roth', '2026-05-06', 'Roth IRA', -50, 'Roth IRA', 'INVESTMENT', 0, 0)",
+      "INSERT INTO transactions (id, account_id, date, name, amount, category, classification, pending, ignored) VALUES ('save-1', 'goal-savings', '2026-05-01', 'Savings', -75, 'General Savings', 'SAVINGS', 0, 0)",
+      "INSERT INTO transactions (id, account_id, date, name, amount, category, classification, pending, ignored) VALUES ('save-2', 'goal-savings', '2026-05-06', 'Savings', -75, 'General Savings', 'SAVINGS', 0, 0)",
+    ], 'write');
+
+    const r = dash({ budgetReferenceDate: new Date(2026, 4, 6, 12) });
+    await waitFor(() => {
+      const f = frame(r);
+      expect(f).toContain('PERSONAL BUDGET');
+      expect(f).toContain('WEEKLY CHASE');
+      expect(f).toContain('ESSENTIALS ONLY');
+      expect(f).toContain('$20.00 remaining');
+      expect(f).toContain('VERIFIED INCOME');
+      expect(f).toContain('$3,500.00');
+      expect(f).toContain('Roth IRA');
+      expect(f).toContain('$100.00 / $100.00 due · $217.00/mo · 2 complete · 0 missed · ON TRACK');
+      expect(f).toContain('$150.00 / $150.00 due · $325.00/mo · 2 complete · 0 missed · ON TRACK');
+      expect(f).toContain('Tesla payment — / $466.00/mo');
+      expect(f).toContain('MONTHLY FLEXIBLE');
+      expect(f).toContain('$293.99 / $805.00');
+      expect(f).toContain('Groceries');
+    });
+  });
+
   it('SPENDING BY CATEGORY lines sum to the displayed Expenses total', async () => {
     // Exercise the two cases that used to break reconciliation: a refund inside a
     // real category (must NET to 200, not show 300) and an income+spend mix inside
@@ -145,7 +184,8 @@ describe('Dashboard', () => {
     const money = (s: string) =>
       [...s.matchAll(/[-+]?\$[\d,]+\.\d{2}/g)].map((m) => parseFloat(m[0].replace(/[$,+]/g, '')));
     // Stat cards render in order Income · Expenses · Net, so Expenses is the 2nd $ token.
-    const expenses = money(statRegion)[1];
+    const summaryRegion = statRegion.slice(statRegion.lastIndexOf('\n  Income'));
+    const expenses = money(summaryRegion)[1];
     const categoryTotal = money(catRegion).reduce((sum, n) => sum + n, 0);
 
     expect(expenses).toBeCloseTo(1088.99, 2);          // 388.99 seeded + 200 net Travel + 500 uncat
