@@ -30,7 +30,7 @@ const mockPlaid = (removed: string[], added: object[] = [], accounts: object[] =
 };
 
 beforeEach(async () => {
-  for (const t of ['transaction_tags', 'tag_rule_suppressions', 'tag_rules', 'tags', 'transactions', 'accounts', 'sync_state', 'balance_history']) {
+  for (const t of ['transaction_tags', 'tag_rule_suppressions', 'tag_rules', 'tags', 'transactions', 'accounts', 'sync_state', 'balance_history', 'plaid_items']) {
     await db.execute(`DELETE FROM ${t}`);
   }
 });
@@ -109,6 +109,16 @@ const transaction = (overrides: Record<string, unknown>) => ({
 });
 
 describe('syncTransactions — classifications', () => {
+  it('copies the linked institution onto synced accounts', async () => {
+    await db.execute("INSERT INTO plaid_items (item_id, access_token, institution_name) VALUES ('item-1', 'token', 'Chase')");
+    mockPlaid([], [], [{ ...account('credit-card', 'credit', 'credit card'), name: 'CREDIT CARD' }]);
+
+    await syncTransactions('token', 'item-1');
+
+    const row = (await db.execute("SELECT institution_name, item_id FROM accounts WHERE id = 'credit-card'")).rows[0];
+    expect(row).toMatchObject({ institution_name: 'Chase', item_id: 'item-1' });
+  });
+
   it('stores Plaid detail and verifies only known payroll', async () => {
     mockPlaid([], [
       transaction({

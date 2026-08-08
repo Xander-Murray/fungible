@@ -10,10 +10,19 @@ import { classifyTransaction } from './transaction-classification.js';
 import { reconcileOwnedTransfers } from './classification-store.js';
 
 export async function syncTransactions(accessToken: string, itemId: string) {
-  const cursorRes = await db.execute({
-    sql: 'SELECT cursor FROM sync_state WHERE account_id = ?',
-    args: [itemId],
-  });
+  const [cursorRes, itemRes] = await Promise.all([
+    db.execute({
+      sql: 'SELECT cursor FROM sync_state WHERE account_id = ?',
+      args: [itemId],
+    }),
+    db.execute({
+      sql: 'SELECT institution_name FROM plaid_items WHERE item_id = ?',
+      args: [itemId],
+    }),
+  ]);
+  const institutionName = itemRes.rows.length > 0
+    ? (itemRes.rows[0] as unknown as { institution_name: string | null }).institution_name
+    : null;
   let cursor = cursorRes.rows.length > 0
     ? (cursorRes.rows[0] as unknown as { cursor: string }).cursor
     : undefined;
@@ -40,12 +49,13 @@ export async function syncTransactions(accessToken: string, itemId: string) {
     accountsResponse.data.accounts.flatMap((acct) => {
       const rows: { sql: string; args: (string | number | null)[] }[] = [
         {
-          sql: `INSERT INTO accounts (id, name, type, subtype, mask, item_id)
-                VALUES (?, ?, ?, ?, ?, ?)
+          sql: `INSERT INTO accounts (id, name, type, subtype, institution_name, mask, item_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                   name=excluded.name, type=excluded.type, subtype=excluded.subtype,
+                  institution_name=excluded.institution_name,
                   mask=excluded.mask, item_id=excluded.item_id`,
-          args: [acct.account_id, acct.name, acct.type, acct.subtype ?? null, acct.mask ?? null, itemId],
+          args: [acct.account_id, acct.name, acct.type, acct.subtype ?? null, institutionName, acct.mask ?? null, itemId],
         },
       ];
       const balance = acct.balances.current;

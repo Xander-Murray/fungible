@@ -167,6 +167,7 @@ export async function getWeeklySpendingStatus(referenceDate = new Date()): Promi
       sql: `SELECT t.category, COALESCE(SUM(t.amount), 0) AS net_spent
             FROM transactions t
             JOIN accounts a ON a.id = t.account_id
+            LEFT JOIN plaid_items pi ON pi.item_id = a.item_id
             LEFT JOIN categories c ON c.name = t.category
             WHERE t.date >= ? AND t.date <= ?
               AND t.pending = 0 AND t.ignored = 0
@@ -175,6 +176,7 @@ export async function getWeeklySpendingStatus(referenceDate = new Date()): Promi
               AND LOWER(a.type) = 'credit'
               AND (
                 LOWER(COALESCE(a.institution_name, '')) LIKE '%chase%'
+                OR LOWER(COALESCE(pi.institution_name, '')) LIKE '%chase%'
                 OR LOWER(a.name) LIKE '%chase%'
               )
               AND COALESCE(c.flexibility, '') <> 'fixed'

@@ -49,6 +49,7 @@ beforeEach(async () => {
   txId = 0;
   await db.execute('DELETE FROM transactions');
   await db.execute('DELETE FROM accounts');
+  await db.execute('DELETE FROM plaid_items');
   await db.execute('DELETE FROM categories');
   await db.execute('DELETE FROM settings');
   await db.batch([
@@ -123,6 +124,14 @@ describe('getWeeklySpendingStatus', () => {
     await insertTransaction({ amount: 100, accountId: 'chase-checking' });
 
     expect(await getWeeklySpendingStatus(referenceDate)).toMatchObject({ spent: 50, remaining: 135 });
+  });
+
+  it('uses the linked Plaid institution when the account institution is blank', async () => {
+    await db.execute("INSERT INTO plaid_items (item_id, access_token, institution_name) VALUES ('chase-item', 'token', 'Chase')");
+    await db.execute("INSERT INTO accounts (id, name, type, institution_name, item_id) VALUES ('linked-card', 'CREDIT CARD', 'credit', NULL, 'chase-item')");
+    await insertTransaction({ amount: 45, accountId: 'linked-card' });
+
+    expect(await getWeeklySpendingStatus(referenceDate)).toMatchObject({ spent: 45, remaining: 140 });
   });
 
   it('nets refunds and reimbursements within their category without negative rollover', async () => {
