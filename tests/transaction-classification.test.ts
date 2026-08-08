@@ -25,6 +25,27 @@ describe('classifyTransaction', () => {
     })).toBe('NEEDS_REVIEW');
   });
 
+  it('verifies the distinct H-E-B, LP depository payroll description', () => {
+    expect(classifyTransaction({
+      amount: -100,
+      name: 'H-E-B, LP',
+      category: 'Food & Drink',
+      plaidPrimary: 'FOOD_AND_DRINK',
+      accountType: 'depository',
+      accountSubtype: 'checking',
+    })).toBe('INCOME');
+  });
+
+  it('does not confuse an H-E-B purchase refund with payroll', () => {
+    expect(classifyTransaction({
+      amount: -25,
+      name: 'H-E-B #771',
+      category: 'Groceries',
+      plaidPrimary: 'FOOD_AND_DRINK',
+      accountType: 'credit',
+    })).toBe('REFUND');
+  });
+
   it.each(['Venmo', 'Cash App', 'Apple Cash', 'Zelle', 'Cash Deposit'])('flags ambiguous credit from %s', (name) => {
     expect(classifyTransaction({ amount: -100, name, plaidPrimary: 'TRANSFER_IN' })).toBe('NEEDS_REVIEW');
   });
@@ -39,6 +60,11 @@ describe('classifyTransaction', () => {
   it('recognizes Plaid transfers and credit-card payments', () => {
     expect(classifyTransaction({ amount: 500, name: 'Online transfer', plaidPrimary: 'TRANSFER_OUT' })).toBe('TRANSFER');
     expect(classifyTransaction({ amount: 500, name: 'Payment', plaidDetailed: 'LOAN_PAYMENTS_CREDIT_CARD_PAYMENT' })).toBe('TRANSFER');
+  });
+
+  it('uses explicit goal categories to distinguish one-sided transfers', () => {
+    expect(classifyTransaction({ amount: 75, name: 'FID BKG SVC LLC', category: 'Roth IRA', plaidPrimary: 'TRANSFER_OUT' })).toBe('INVESTMENT');
+    expect(classifyTransaction({ amount: 75, name: 'Transfer', category: 'General Savings', plaidPrimary: 'TRANSFER_OUT' })).toBe('SAVINGS');
   });
 
   it('uses the account destination to distinguish owned transfers', () => {

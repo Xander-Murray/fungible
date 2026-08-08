@@ -95,13 +95,32 @@ describe('getSavingsGoalsStatus', () => {
   });
 
   it('counts manual one-sided goal transfers but excludes ordinary brokerage transfers', async () => {
-    await transaction({ date: '2026-08-05', amount: 50, classification: 'INVESTMENT', category: 'Roth IRA' });
+    await transaction({ date: '2026-08-05', amount: 50, classification: 'TRANSFER', category: 'Roth IRA' });
     await transaction({ date: '2026-08-05', amount: 500, classification: 'INVESTMENT', accountId: 'brokerage', name: 'Brokerage transfer' });
-    await transaction({ date: '2026-08-05', amount: 75, classification: 'SAVINGS' });
+    await transaction({ date: '2026-08-05', amount: 75, classification: 'TRANSFER', category: 'General Savings' });
 
     const result = await getSavingsGoalsStatus(new Date(2026, 7, 5, 12));
     expect(result.goals.find((goal) => goal.key === 'roth')?.contributed).toBe(50);
     expect(result.goals.find((goal) => goal.key === 'savings')?.contributed).toBe(75);
+  });
+
+  it('counts linked checking-to-savings transfers while deduplicating both legs', async () => {
+    await transaction({ date: '2026-08-05', amount: 75, classification: 'TRANSFER', name: 'Transfer to 360 Performance Savings' });
+    await transaction({ date: '2026-08-05', amount: -75, classification: 'TRANSFER', accountId: 'savings', name: 'Transfer from 360 Checking' });
+
+    const result = await getSavingsGoalsStatus(new Date(2026, 7, 5, 12));
+    expect(result.goals.find((goal) => goal.key === 'savings')?.contributed).toBe(75);
+  });
+
+  it('does not count withdrawals from savings or Roth accounts as contributions', async () => {
+    await transaction({ date: '2026-08-05', amount: 75, classification: 'SAVINGS', accountId: 'savings', name: 'Transfer to checking' });
+    await transaction({ date: '2026-08-05', amount: -75, classification: 'SAVINGS', name: 'Deposit from savings' });
+    await transaction({ date: '2026-08-05', amount: 50, classification: 'INVESTMENT', accountId: 'roth', name: 'Roth IRA withdrawal' });
+    await transaction({ date: '2026-08-05', amount: -50, classification: 'INVESTMENT', name: 'Deposit from Roth IRA' });
+
+    const result = await getSavingsGoalsStatus(new Date(2026, 7, 5, 12));
+    expect(result.goals.find((goal) => goal.key === 'roth')?.contributed).toBe(0);
+    expect(result.goals.find((goal) => goal.key === 'savings')?.contributed).toBe(0);
   });
 
   it('uses configurable weekly goals and fixed-obligation targets', async () => {

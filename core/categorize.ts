@@ -65,6 +65,15 @@ export function categorizeWithRules(
     if (matchesPattern(rule.pattern, rule.match_type, haystacks)) return rule.category;
   }
 
+  // Plaid reports H-E-B payroll, stores, and fuel stations under the same broad
+  // FOOD_AND_DRINK category, so the transaction description and direction are
+  // stronger signals.
+  if (amount !== undefined && amount < 0 && /^h[- ]?e[- ]?b,\s*lp$/i.test(name.trim())) return 'Income';
+  if (amount !== undefined && amount > 0) {
+    if (/\bh[- ]?e[- ]?b\s+gas(?:\s*\/\s*car\s*wash|\s*\/\s*carwash)?\b/i.test(name)) return 'Gas';
+    if (/^h[- ]?e[- ]?b(?:\s+(?:store\s*)?#?\d+)?$/i.test(name.trim())) return 'Groceries';
+  }
+
   if (plaidDetailed && PLAID_CATEGORY_MAP[plaidDetailed]) {
     return PLAID_CATEGORY_MAP[plaidDetailed];
   }

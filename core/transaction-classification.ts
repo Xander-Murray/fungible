@@ -29,6 +29,13 @@ const VERIFIED_PAYROLL_SOURCES = [
   /city of san antonio/i,
 ];
 
+const VERIFIED_DEPOSIT_DESCRIPTIONS = [
+  /\bh[ -]?e[ -]?b,\s*lp\b/i,
+  /\bkbr\b/i,
+  /\bnoaa\b/i,
+  /city of san antonio/i,
+];
+
 const AMBIGUOUS_CREDIT_SOURCES = [
   /\bvenmo\b/i,
   /\bcash ?app\b/i,
@@ -56,6 +63,8 @@ function isTransferSignal(input: ClassificationInput): boolean {
 }
 
 function transferClassification(input: ClassificationInput): TransactionClassification {
+  if (input.category === 'Roth IRA') return 'INVESTMENT';
+  if (input.category === 'General Savings') return 'SAVINGS';
   if (input.accountType === 'investment') return 'INVESTMENT';
   if (input.accountSubtype?.toLowerCase() === 'savings') return 'SAVINGS';
   return 'TRANSFER';
@@ -76,9 +85,12 @@ export function classifyTransaction(input: ClassificationInput): TransactionClas
     if (REIMBURSEMENT_TERMS.test(name)) return 'REIMBURSEMENT';
     if (REFUND_TERMS.test(name)) return 'REFUND';
 
-    const verifiedPayroll = input.plaidPrimary === 'INCOME'
-      && input.plaidDetailed === 'INCOME_WAGES'
-      && VERIFIED_PAYROLL_SOURCES.some((source) => source.test(name));
+    const knownPayrollSource = VERIFIED_PAYROLL_SOURCES.some((source) => source.test(name));
+    const verifiedPayroll = knownPayrollSource && (
+      (input.plaidPrimary === 'INCOME' && input.plaidDetailed === 'INCOME_WAGES')
+      || (input.accountType === 'depository'
+        && VERIFIED_DEPOSIT_DESCRIPTIONS.some((source) => source.test(name)))
+    );
     if (verifiedPayroll) return 'INCOME';
 
     if (input.category && !['Income', 'Uncategorized'].includes(input.category)

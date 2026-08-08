@@ -71,6 +71,16 @@ describe('Plaid category fallback', () => {
     expect(await categorize('market', null, 'FOOD_AND_DRINK', undefined, undefined, 'FOOD_AND_DRINK_GROCERIES')).toBe('Groceries');
     expect(await categorize('fuel', null, 'TRANSPORTATION', undefined, undefined, 'TRANSPORTATION_GAS')).toBe('Gas');
   });
+
+  it('distinguishes H-E-B grocery purchases from H-E-B fuel purchases', async () => {
+    expect(await categorize('H-E-B #771', null, 'FOOD_AND_DRINK', 42.50)).toBe('Groceries');
+    expect(await categorize('H-E-B GAS/CARWASH #771', null, 'FOOD_AND_DRINK', 35)).toBe('Gas');
+    expect(await categorize('H-E-B GAS/CAR WASH #61', null, 'FOOD_AND_DRINK', 12)).toBe('Gas');
+  });
+
+  it('uses the distinct H-E-B payroll description for deposits', async () => {
+    expect(await categorize('H-E-B, LP', null, 'FOOD_AND_DRINK', -100)).toBe('Income');
+  });
 });
 
 describe('name-match rules', () => {

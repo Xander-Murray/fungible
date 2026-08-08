@@ -265,11 +265,13 @@ type GoalTransaction = {
 
 function goalKey(row: GoalTransaction): 'roth' | 'savings' | null {
   const text = `${row.name} ${row.merchant_name ?? ''} ${row.category ?? ''} ${row.account_name} ${row.account_nickname ?? ''} ${row.account_subtype ?? ''}`;
-  if (row.classification === 'INVESTMENT' && /\broth(?: ira)?\b/i.test(text)) return 'roth';
-  if (row.classification === 'SAVINGS'
-    && (Number(row.amount) > 0 || row.account_subtype?.toLowerCase() === 'savings' || /\bsavings?\b/i.test(text))) {
-    return 'savings';
-  }
+  const amount = Number(row.amount);
+  if (row.category === 'Roth IRA' && amount > 0) return 'roth';
+  if ((row.classification === 'INVESTMENT' || row.classification === 'TRANSFER')
+    && amount < 0 && row.account_type === 'investment' && /\broth(?: ira)?\b/i.test(text)) return 'roth';
+  if (row.category === 'General Savings' && amount > 0) return 'savings';
+  if ((row.classification === 'SAVINGS' || row.classification === 'TRANSFER')
+    && amount < 0 && row.account_subtype?.toLowerCase() === 'savings') return 'savings';
   return null;
 }
 
@@ -317,7 +319,7 @@ export async function getSavingsGoalsStatus(referenceDate = new Date()): Promise
               a.type AS account_type, a.subtype AS account_subtype
             FROM transactions t JOIN accounts a ON a.id = t.account_id
             WHERE t.date >= ? AND t.date <= ? AND t.pending = 0 AND t.ignored = 0
-              AND COALESCE(t.manual_classification, t.classification) IN ('SAVINGS', 'INVESTMENT')`,
+              AND COALESCE(t.manual_classification, t.classification) IN ('TRANSFER', 'SAVINGS', 'INVESTMENT')`,
       args: [from, to],
     }),
   ]);
