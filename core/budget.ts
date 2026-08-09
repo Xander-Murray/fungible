@@ -169,18 +169,28 @@ export async function setBudgetAmount(key: string, amount: number | null): Promi
   });
 }
 
-export async function getWeeklySpendingStatus(referenceDate = new Date()): Promise<WeeklySpendingSummary> {
-  if (Number.isNaN(referenceDate.getTime())) throw new Error('Weekly budget requires a valid reference date');
-  const weekStart = getPeriodStart('week', referenceDate);
-  const { from, to } = getPeriodDates('week', weekStart);
-  const [limit, result] = await Promise.all([
-    getWeeklyChaseLimit(),
+const OTHER_CHASE_SPENDING = 'Other Chase spending';
+
+async function getWeeklyChaseCategorySpending(from: string, to: string): Promise<Array<{
+  category: string;
+  limit: number;
+  spent: number;
+}>> {
+  const [budgetResult, spendingResult] = await Promise.all([
+    db.execute(`SELECT name AS category, monthly_limit AS monthly_limit
+                FROM categories
+                WHERE monthly_limit IS NOT NULL AND budget_group IS NULL
+                ORDER BY name`),
     db.execute({
-      sql: `SELECT t.category, COALESCE(SUM(t.amount), 0) AS net_spent
+      sql: `SELECT t.category AS source_category, budget.name AS budget_category,
+              COALESCE(SUM(t.amount), 0) AS net_spent
             FROM transactions t
             JOIN accounts a ON a.id = t.account_id
             LEFT JOIN plaid_items pi ON pi.item_id = a.item_id
-            LEFT JOIN categories c ON c.name = t.category
+            LEFT JOIN categories member ON member.name = t.category
+            LEFT JOIN categories budget
+              ON budget.name = COALESCE(member.budget_group, member.name)
+              AND budget.monthly_limit IS NOT NULL AND budget.budget_group IS NULL
             WHERE t.date >= ? AND t.date <= ?
               AND t.ignored = 0
               AND COALESCE(t.manual_classification, t.classification)
@@ -191,13 +201,42 @@ export async function getWeeklySpendingStatus(referenceDate = new Date()): Promi
                 OR LOWER(COALESCE(pi.institution_name, '')) LIKE '%chase%'
                 OR LOWER(a.name) LIKE '%chase%'
               )
-              AND COALESCE(c.flexibility, '') <> 'fixed'
-            GROUP BY t.category`,
+              AND COALESCE(member.flexibility, '') <> 'fixed'
+            GROUP BY t.category, budget.name`,
       args: [from, to],
     }),
   ]);
-  const spent = money((result.rows as unknown as { net_spent: number }[])
-    .reduce((sum, row) => sum + Math.max(0, Number(row.net_spent)), 0));
+
+  const categories = (budgetResult.rows as unknown as {
+    category: string; monthly_limit: number;
+  }[]).map((row) => ({
+    category: row.category,
+    limit: money(Number(row.monthly_limit)),
+    spent: 0,
+  }));
+  const byCategory = new Map(categories.map((row) => [row.category, row]));
+  let otherSpent = 0;
+  for (const row of spendingResult.rows as unknown as {
+    budget_category: string | null; net_spent: number;
+  }[]) {
+    const spent = money(Math.max(0, Number(row.net_spent)));
+    const budgetCategory = row.budget_category ? byCategory.get(row.budget_category) : undefined;
+    if (budgetCategory) budgetCategory.spent = money(budgetCategory.spent + spent);
+    else otherSpent = money(otherSpent + spent);
+  }
+  if (otherSpent > 0) categories.push({ category: OTHER_CHASE_SPENDING, limit: 0, spent: otherSpent });
+  return categories;
+}
+
+export async function getWeeklySpendingStatus(referenceDate = new Date()): Promise<WeeklySpendingSummary> {
+  if (Number.isNaN(referenceDate.getTime())) throw new Error('Weekly budget requires a valid reference date');
+  const weekStart = getPeriodStart('week', referenceDate);
+  const { from, to } = getPeriodDates('week', weekStart);
+  const [limit, categories] = await Promise.all([
+    getWeeklyChaseLimit(),
+    getWeeklyChaseCategorySpending(from, to),
+  ]);
+  const spent = money(categories.reduce((sum, row) => sum + row.spent, 0));
   return {
     from,
     to,
@@ -245,13 +284,19 @@ export async function getWeeklyFlexibleStatus(referenceDate = new Date()): Promi
   if (Number.isNaN(referenceDate.getTime())) throw new Error('Weekly flexible spending requires a valid reference date');
   const { from, to } = getPeriodDates('week', getPeriodStart('week', referenceDate));
   const [spending, limit] = await Promise.all([
-    getFlexibleCategorySpending(from, to),
+    getWeeklyChaseCategorySpending(from, to),
     getWeeklyChaseLimit(),
   ]);
   const monthlyLimit = spending.reduce((sum, row) => sum + row.limit, 0);
+  let lastBudgetIndex = -1;
+  spending.forEach((row, index) => {
+    if (row.limit > 0) lastBudgetIndex = index;
+  });
   let allocated = 0;
   const categories = spending.map((row, index): MonthlyBudgetCategory => {
-    const categoryLimit = index === spending.length - 1
+    const categoryLimit = row.limit === 0
+      ? 0
+      : index === lastBudgetIndex
       ? money(limit - allocated)
       : money(monthlyLimit === 0 ? 0 : (row.limit / monthlyLimit) * limit);
     allocated = money(allocated + categoryLimit);

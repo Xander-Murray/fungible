@@ -23,6 +23,7 @@ async function insertTransaction(options: {
   amount: number;
   category: string;
   classification: string;
+  accountId?: string;
   date?: string;
   pending?: number;
   ignored?: number;
@@ -31,9 +32,10 @@ async function insertTransaction(options: {
   await db.execute({
     sql: `INSERT INTO transactions
           (id, account_id, date, name, amount, category, classification, pending, ignored)
-          VALUES (?, 'account', ?, 'Budget transaction', ?, ?, ?, ?, ?)`,
+          VALUES (?, ?, ?, 'Budget transaction', ?, ?, ?, ?, ?)`,
     args: [
       `budget-${txId}`,
+      options.accountId ?? 'account',
       options.date ?? '2026-08-15',
       options.amount,
       options.category,
@@ -47,8 +49,11 @@ async function insertTransaction(options: {
 beforeEach(async () => {
   txId = 0;
   await db.execute('DELETE FROM transactions');
+  await db.execute('DELETE FROM accounts');
   await db.execute('DELETE FROM categories');
   await db.batch([
+    { sql: "INSERT INTO accounts (id, name, type, institution_name) VALUES ('account', 'Freedom', 'credit', 'Chase')", args: [] },
+    { sql: "INSERT INTO accounts (id, name, type, institution_name) VALUES ('other-account', 'Checking', 'depository', 'Capital One')", args: [] },
     ...limits.map(([name, limit]) => ({
       sql: 'INSERT INTO categories (name, monthly_limit) VALUES (?, ?)',
       args: [name, limit],
@@ -58,6 +63,7 @@ beforeEach(async () => {
     { sql: "INSERT INTO categories (name, budget_group) VALUES ('Gas', 'Transportation Energy')", args: [] },
     { sql: "INSERT INTO categories (name, budget_group) VALUES ('EV Charging', 'Transportation Energy')", args: [] },
     { sql: "INSERT INTO categories (name, budget_group) VALUES ('Misc', 'Miscellaneous')", args: [] },
+    { sql: "INSERT INTO categories (name, flexibility) VALUES ('Services', 'flexible')", args: [] },
   ], 'write');
 });
 
@@ -155,6 +161,25 @@ describe('getWeeklyFlexibleStatus', () => {
       spent: 0, limit: 28.73, remaining: 28.73, status: 'GOOD',
     });
     expect(result.categories.reduce((sum, row) => sum + row.limit, 0)).toBe(185);
+  });
+
+  it('reconciles to Chase spending and groups unmapped Chase categories as other', async () => {
+    await insertTransaction({ amount: 45, category: 'Dining', classification: 'EXPENSE', date: '2026-08-05' });
+    await insertTransaction({ amount: 14, category: 'Services', classification: 'EXPENSE', date: '2026-08-05' });
+    await insertTransaction({
+      amount: 2.99, category: 'Entertainment', classification: 'EXPENSE',
+      accountId: 'other-account', date: '2026-08-05',
+    });
+
+    const result = await getWeeklyFlexibleStatus(new Date(2026, 7, 5, 12));
+    expect(result.spent).toBe(59);
+    expect(result.categories.find((row) => row.category === 'Food & Drink')?.spent).toBe(45);
+    expect(result.categories.find((row) => row.category === 'Entertainment')?.spent).toBe(0);
+    expect(result.categories.find((row) => row.category === 'Other Chase spending')).toMatchObject({
+      spent: 14, limit: 0, remaining: -14, status: 'OVER_BUDGET',
+    });
+    expect(result.categories.reduce((sum, row) => sum + row.spent, 0)).toBe(result.spent);
+    expect(result.categories.reduce((sum, row) => sum + row.limit, 0)).toBe(result.limit);
   });
 });
 
