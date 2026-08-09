@@ -182,7 +182,7 @@ export async function getWeeklySpendingStatus(referenceDate = new Date()): Promi
             LEFT JOIN plaid_items pi ON pi.item_id = a.item_id
             LEFT JOIN categories c ON c.name = t.category
             WHERE t.date >= ? AND t.date <= ?
-              AND t.pending = 0 AND t.ignored = 0
+              AND t.ignored = 0
               AND COALESCE(t.manual_classification, t.classification)
                 IN ('EXPENSE', 'REFUND', 'REIMBURSEMENT')
               AND LOWER(a.type) = 'credit'
@@ -226,7 +226,7 @@ async function getFlexibleCategorySpending(from: string, to: string): Promise<Ar
           LEFT JOIN transactions t
             ON t.category = member.name
             AND t.date >= ? AND t.date <= ?
-            AND t.pending = 0 AND t.ignored = 0
+            AND t.ignored = 0
           WHERE budget.monthly_limit IS NOT NULL AND budget.budget_group IS NULL
           GROUP BY budget.name, budget.monthly_limit
           ORDER BY budget.name`,

@@ -105,7 +105,7 @@ describe('getWeeklySpendingStatus', () => {
     expect(nextWeek).toMatchObject({ spent: 20, limit: 185, remaining: 165, status: 'GOOD' });
   });
 
-  it('excludes non-spending classifications, fixed costs, pending and ignored rows', async () => {
+  it('includes pending expenses while excluding non-spending, fixed, and ignored rows', async () => {
     await insertTransaction({ amount: 25 });
     for (const classification of ['TRANSFER', 'SAVINGS', 'INVESTMENT', 'INCOME', 'NEEDS_REVIEW']) {
       await insertTransaction({ amount: 100, classification });
@@ -114,7 +114,7 @@ describe('getWeeklySpendingStatus', () => {
     await insertTransaction({ amount: 100, pending: 1 });
     await insertTransaction({ amount: 100, ignored: 1 });
 
-    expect(await getWeeklySpendingStatus(referenceDate)).toMatchObject({ spent: 25, remaining: 160 });
+    expect(await getWeeklySpendingStatus(referenceDate)).toMatchObject({ spent: 125, remaining: 60 });
   });
 
   it('counts Chase credit cards only, using institution or account name', async () => {

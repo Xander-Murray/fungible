@@ -84,7 +84,7 @@ describe('getMonthlyBudgetStatus', () => {
     expect(energy).toMatchObject({ spent: 105, limit: 175, remaining: 70, status: 'GOOD' });
   });
 
-  it('excludes non-spending classifications, pending, ignored, and other months', async () => {
+  it('includes pending expenses while excluding non-spending, ignored, and other months', async () => {
     await insertTransaction({ amount: 25, category: 'Shopping', classification: 'EXPENSE' });
     for (const classification of ['TRANSFER', 'SAVINGS', 'INVESTMENT', 'INCOME', 'NEEDS_REVIEW']) {
       await insertTransaction({ amount: 100, category: 'Shopping', classification });
@@ -95,7 +95,7 @@ describe('getMonthlyBudgetStatus', () => {
 
     const shopping = (await getMonthlyBudgetStatus(2026, 8)).categories
       .find((row) => row.category === 'Shopping');
-    expect(shopping?.spent).toBe(25);
+    expect(shopping?.spent).toBe(125);
   });
 
   it('applies refunds and reimbursements in-category and floors net spending at zero', async () => {
@@ -136,7 +136,7 @@ describe('getWeeklyFlexibleStatus', () => {
   it('totals the configured flexible categories for the selected Monday-to-Sunday week', async () => {
     await insertTransaction({ amount: 45, category: 'Dining', classification: 'EXPENSE', date: '2026-08-03' });
     await insertTransaction({ amount: -10, category: 'Dining', classification: 'REFUND', date: '2026-08-04' });
-    await insertTransaction({ amount: 80, category: 'Grocery', classification: 'EXPENSE', date: '2026-08-09' });
+    await insertTransaction({ amount: 80, category: 'Grocery', classification: 'EXPENSE', date: '2026-08-09', pending: 1 });
     await insertTransaction({ amount: 100, category: 'Shopping', classification: 'EXPENSE', date: '2026-08-10' });
     await insertTransaction({ amount: 500, category: 'Shopping', classification: 'TRANSFER', date: '2026-08-05' });
 
