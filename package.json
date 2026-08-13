@@ -24,8 +24,8 @@
     "mcp": "node --import tsx/esm mcp/server.ts",
     "api": "node --import tsx/esm api/server.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p gui/renderer",
-    "test": "~/.nvm/versions/node/v22.22.3/bin/node ./node_modules/.bin/vitest run",
-    "test:watch": "~/.nvm/versions/node/v22.22.3/bin/node ./node_modules/.bin/vitest",
+    "test": "node ./node_modules/.bin/vitest run",
+    "test:watch": "node ./node_modules/.bin/vitest",
     "test:e2e": "electron-vite build && playwright test"
   },
   "license": "MIT",
