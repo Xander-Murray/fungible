@@ -42,10 +42,12 @@ const AMBIGUOUS_CREDIT_SOURCES = [
   /\bapple cash\b/i,
   /\bzelle\b/i,
   /\bcash deposit\b/i,
+  /\b(?:atm|check|mobile) deposit\b/i,
 ];
 
 const REFUND_TERMS = /\b(refund|reversal|returned purchase|purchase return|credit voucher)\b/i;
 const REIMBURSEMENT_TERMS = /\b(reimburse(?:ment|d)?|expense repayment)\b/i;
+const CREDIT_CARD_PAYMENT_TERMS = /\b(payment thank you|automatic payment\s*-?\s*thank)\b/i;
 
 function combinedName(input: ClassificationInput): string {
   return `${input.name} ${input.merchantName ?? ''}`.trim();
@@ -73,6 +75,11 @@ function transferClassification(input: ClassificationInput): TransactionClassifi
 /** Classify one transaction without assuming an equal-and-opposite owned-account match. */
 export function classifyTransaction(input: ClassificationInput): TransactionClassification {
   const name = combinedName(input);
+  if (input.amount < 0 && input.accountType === 'credit'
+    && (CREDIT_CARD_PAYMENT_TERMS.test(name)
+      || input.plaidDetailed === 'LOAN_PAYMENTS_CREDIT_CARD_PAYMENT')) {
+    return 'TRANSFER';
+  }
   // Payment apps and cash deposits are not evidence of an owned-account
   // transfer, even when Plaid broadly labels them TRANSFER_IN.
   if (input.amount < 0 && AMBIGUOUS_CREDIT_SOURCES.some((source) => source.test(name))) {

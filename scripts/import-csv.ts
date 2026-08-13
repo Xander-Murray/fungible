@@ -5,6 +5,8 @@ import crypto from 'node:crypto';
 import { initDb, db } from '../core/db.js';
 import { categorize } from '../core/categorize.js';
 import { deduplicateCsvVsPlaid } from '../core/dedup.js';
+import { classifyTransaction } from '../core/transaction-classification.js';
+import { reconcileOwnedTransfers } from '../core/classification-store.js';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -92,13 +94,15 @@ async function parseCheckingOrSavings(filePath: string): Promise<number> {
     const absAmount = parseFloat(rawAmount.trim());
     const amount = txType.trim().toLowerCase() === 'credit' ? -absAmount : absAmount;
 
-    const accountId = await ensureAccount(mask, guessAccountName(filePath, mask), 'depository', guessSubtype(filePath));
+    const subtype = guessSubtype(filePath);
+    const accountId = await ensureAccount(mask, guessAccountName(filePath, mask), 'depository', subtype);
     const category = await categorize(name, null, null, amount, accountId);
+    const classification = classifyTransaction({ amount, name, category, accountType: 'depository', accountSubtype: subtype });
     const id = txId(mask, date, name, amount);
 
     inserts.push({
-      sql: 'INSERT OR IGNORE INTO transactions (id, account_id, date, name, amount, category, raw_category, pending) VALUES (?, ?, ?, ?, ?, ?, ?, 0)',
-      args: [id, accountId, date, name, amount, category, null],
+      sql: 'INSERT OR IGNORE INTO transactions (id, account_id, date, name, amount, category, raw_category, pending, classification) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)',
+      args: [id, accountId, date, name, amount, category, null, classification],
     });
   }
 
@@ -126,11 +130,12 @@ async function parseCreditCard(filePath: string): Promise<number> {
     const accountId = await ensureAccount(cardMask, `Credit Card ${cardMask}`, 'credit', 'credit card');
     const mapped = mapCapOneCategory(rawCapOneCategory);
     const category = mapped ?? await categorize(txName, null, null, amount, accountId);
+    const classification = classifyTransaction({ amount, name: txName, category, accountType: 'credit', accountSubtype: 'credit card' });
     const id = txId(cardMask, txDate, txName, amount);
 
     const result = await db.execute({
-      sql: 'INSERT OR IGNORE INTO transactions (id, account_id, date, name, amount, category, raw_category, pending) VALUES (?, ?, ?, ?, ?, ?, ?, 0)',
-      args: [id, accountId, txDate, txName, amount, category, rawCapOneCategory],
+      sql: 'INSERT OR IGNORE INTO transactions (id, account_id, date, name, amount, category, raw_category, pending, classification) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)',
+      args: [id, accountId, txDate, txName, amount, category, rawCapOneCategory, classification],
     });
     // if row already existed (Plaid dupe), update its category if it was uncategorized
     if (result.rowsAffected === 0 && mapped) {
@@ -177,6 +182,7 @@ async function main() {
   }
 
   const removed = await deduplicateCsvVsPlaid();
+  await reconcileOwnedTransfers();
 
   const countResult = await db.execute('SELECT COUNT(*) as c FROM transactions');
   const totalCount = (countResult.rows[0] as unknown as { c: number }).c;

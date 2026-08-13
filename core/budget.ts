@@ -202,7 +202,7 @@ async function getWeeklyChaseCategorySpending(from: string, to: string): Promise
                 OR LOWER(a.name) LIKE '%chase%'
               )
               AND COALESCE(member.flexibility, '') <> 'fixed'
-            GROUP BY t.category, budget.name`,
+            GROUP BY COALESCE(member.budget_group, member.name, t.category), budget.name`,
       args: [from, to],
     }),
   ]);

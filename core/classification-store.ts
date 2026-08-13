@@ -45,6 +45,26 @@ export async function classifyTransactionById(id: string): Promise<TransactionCl
   return tx ? classifyStoredTransaction(tx) : null;
 }
 
+/** Re-run current rules for every unpinned transaction, then restore owned-account pairs. */
+export async function reclassifyAllTransactions(): Promise<number> {
+  const result = await db.execute(`
+    SELECT t.*, a.type AS account_type, a.subtype AS account_subtype
+    FROM transactions t LEFT JOIN accounts a ON a.id = t.account_id
+    WHERE t.manual_classification IS NULL
+  `);
+  const rows = result.rows as unknown as StoredTransaction[];
+  const updates = rows
+    .map((tx) => ({ tx, classification: classifyStoredTransaction(tx) }))
+    .filter(({ tx, classification }) => tx.classification !== classification)
+    .map(({ tx, classification }) => ({
+      sql: 'UPDATE transactions SET classification = ? WHERE id = ?',
+      args: [classification, tx.id],
+    }));
+  if (updates.length > 0) await db.batch(updates, 'write');
+  await reconcileOwnedTransfers();
+  return updates.length;
+}
+
 /**
  * Match transfer-like debits and credits across accounts owned by the user.
  * Plaid transactions can post on different days, so exact amounts are paired

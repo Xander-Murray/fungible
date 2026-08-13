@@ -59,6 +59,7 @@ beforeEach(async () => {
     { sql: "INSERT INTO accounts (id, name, type, institution_name) VALUES ('chase-checking', 'Chase Total Checking', 'depository', 'Chase')", args: [] },
     { sql: "INSERT INTO categories (name, flexibility) VALUES ('Shopping', 'discretionary')", args: [] },
     { sql: "INSERT INTO categories (name, flexibility) VALUES ('Groceries', 'flexible')", args: [] },
+    { sql: "INSERT INTO categories (name, flexibility, budget_group) VALUES ('Grocery', 'flexible', 'Groceries')", args: [] },
     { sql: "INSERT INTO categories (name, flexibility) VALUES ('Entertainment', 'discretionary')", args: [] },
     { sql: "INSERT INTO categories (name, flexibility) VALUES ('Insurance', 'fixed')", args: [] },
     { sql: "INSERT INTO categories (name, flexibility) VALUES ('Uncategorized', NULL)", args: [] },
@@ -142,6 +143,13 @@ describe('getWeeklySpendingStatus', () => {
     await insertTransaction({ amount: -100, category: 'Entertainment', classification: 'REFUND' });
 
     expect(await getWeeklySpendingStatus(referenceDate)).toMatchObject({ spent: 70, remaining: 115 });
+  });
+
+  it('nets refunds across aliases before clamping the budget group', async () => {
+    await insertTransaction({ amount: 80, category: 'Groceries' });
+    await insertTransaction({ amount: -30, category: 'Grocery', classification: 'REFUND' });
+
+    expect(await getWeeklySpendingStatus(referenceDate)).toMatchObject({ spent: 50, remaining: 135 });
   });
 
   it('honors manual classification overrides', async () => {

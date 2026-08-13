@@ -164,7 +164,7 @@ export async function initDb() {
     'Roth IRA', 'General Savings', 'Tesla Payment', 'Tesla Insurance',
     'Bills & Utilities', 'Insurance', 'Medical', 'Personal Care',
     'Childcare', 'Entertainment', 'Home', 'Services', 'Fees',
-    'Government', 'Taxes', 'Loan Payment', 'Uncategorized',
+    'Government', 'Taxes', 'Loan Payment', 'Subscriptions', 'Uncategorized',
   ];
   await db.batch(
     defaultCategories.map((cat) => ({
@@ -185,6 +185,7 @@ export async function initDb() {
     ['Transportation', 'flexible'], ['Transportation Energy', 'flexible'],
     ['Gas', 'flexible'], ['EV Charging', 'flexible'], ['Misc', 'flexible'], ['Miscellaneous', 'flexible'],
     ['Personal Care', 'flexible'], ['Home', 'flexible'], ['Services', 'flexible'],
+    ['Subscriptions', 'discretionary'],
     ['Shopping', 'discretionary'], ['Entertainment', 'discretionary'],
     ['Travel', 'discretionary'], ['Dining', 'discretionary'], ['Fees', 'discretionary'],
   ];
@@ -278,6 +279,16 @@ export async function initDb() {
       rows.push({ sql: 'INSERT INTO household_members (id, name, birth_year, sort_order) VALUES (?,?,?,?)', args: [`child-${i}`, c.name, c.birthYear, i + 2] });
     }
     await db.batch(rows, 'write');
+  }
+
+  const classificationVersion = await db.execute(
+    "SELECT value FROM settings WHERE key = 'classification_rules_version'",
+  );
+  if (classificationVersion.rows[0]?.value !== '2') {
+    const { reclassifyAllTransactions } = await import('./classification-store.js');
+    await reclassifyAllTransactions();
+    await db.execute(`INSERT INTO settings (key, value) VALUES ('classification_rules_version', '2')
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value`);
   }
 
 }

@@ -46,7 +46,7 @@ describe('classifyTransaction', () => {
     })).toBe('REFUND');
   });
 
-  it.each(['Venmo', 'Cash App', 'Apple Cash', 'Zelle', 'Cash Deposit'])('flags ambiguous credit from %s', (name) => {
+  it.each(['Venmo', 'Cash App', 'Apple Cash', 'Zelle', 'Cash Deposit', 'ATM Deposit (Cash)', 'Check Deposit (Mobile)'])('flags ambiguous credit from %s', (name) => {
     expect(classifyTransaction({ amount: -100, name, plaidPrimary: 'TRANSFER_IN' })).toBe('NEEDS_REVIEW');
   });
 
@@ -60,6 +60,7 @@ describe('classifyTransaction', () => {
   it('recognizes Plaid transfers and credit-card payments', () => {
     expect(classifyTransaction({ amount: 500, name: 'Online transfer', plaidPrimary: 'TRANSFER_OUT' })).toBe('TRANSFER');
     expect(classifyTransaction({ amount: 500, name: 'Payment', plaidDetailed: 'LOAN_PAYMENTS_CREDIT_CARD_PAYMENT' })).toBe('TRANSFER');
+    expect(classifyTransaction({ amount: -785.91, name: 'Payment Thank You-Mobile', accountType: 'credit', plaidPrimary: 'LOAN_DISBURSEMENTS', plaidDetailed: 'LOAN_DISBURSEMENTS_OTHER_DISBURSEMENT' })).toBe('TRANSFER');
   });
 
   it('uses explicit goal categories to distinguish one-sided transfers', () => {

@@ -3,9 +3,11 @@ import { Box, Text, useInput } from 'ink';
 import {
   setTransactionCategory, clearTransactionOverride, setTransactionIgnored,
   setTransactionDisplayName, deleteTransaction,
+  setTransactionClassification, clearTransactionClassificationOverride,
   upsertCategoryRule, upsertNameRule,
   setTransactionCategoryBulk, clearOverridesBulk, setIgnoredBulk,
 } from '../core/transactions.js';
+import { TRANSACTION_CLASSIFICATIONS } from '../core/transaction-classification.js';
 import { syncAll } from '../core/sync.js';
 import {
   getTagOptions, getTransactionTagIds, getOrCreateTag,
@@ -31,7 +33,7 @@ type Tx = TxRow;
 
 
 type Mode = 'list' | 'search' | 'edit' | 'tag' | 'tag-all' | 'edit-all';
-type EditField = 'name' | 'category' | 'pattern' | 'type';
+type EditField = 'name' | 'category' | 'classification' | 'pattern' | 'type';
 
 const SORT_CYCLE: SortMode[] = ['date-desc', 'date-asc', 'name-asc', 'name-desc', 'amount-desc', 'amount-asc', 'category-asc', 'category-desc'];
 
@@ -75,6 +77,7 @@ export function Transactions({ onNavigate, initialFilter, isActive, showHints }:
   const [editField, setEditField] = useState<EditField>('name');
   const [editName, setEditName] = useState('');
   const [editCatCursor, setEditCatCursor] = useState(0);
+  const [editClassificationCursor, setEditClassificationCursor] = useState(0);
   const [editPattern, setEditPattern] = useState('');
   const [editMatchType, setEditMatchType] = useState<'name' | 'regex'>('name');
 
@@ -118,6 +121,7 @@ export function Transactions({ onNavigate, initialFilter, isActive, showHints }:
       setEditPattern('');
       setEditMatchType('name');
       setEditCatCursor(Math.max(0, cats.indexOf(selected.category)));
+      setEditClassificationCursor(Math.max(0, TRANSACTION_CLASSIFICATIONS.indexOf(selected.classification ?? 'NEEDS_REVIEW')));
       setEditField('name');
       setMode('edit');
     });
@@ -166,6 +170,8 @@ export function Transactions({ onNavigate, initialFilter, isActive, showHints }:
     const newDisplay = editName.trim();
     const nameChanged = newDisplay.length > 0;
     const catChanged = newCat !== selected.category;
+    const newClassification = TRANSACTION_CLASSIFICATIONS[editClassificationCursor];
+    const classificationChanged = newClassification !== selected.classification;
 
     if (nameChanged) {
       setTransactionDisplayName(selected.id, newDisplay);
@@ -173,8 +179,9 @@ export function Transactions({ onNavigate, initialFilter, isActive, showHints }:
     if (catChanged) {
       setTransactionCategory(selected.id, newCat);
     }
+    if (classificationChanged) setTransactionClassification(selected.id, newClassification);
 
-    if (nameChanged || catChanged) showStatus('Transaction updated');
+    if (nameChanged || catChanged || classificationChanged) showStatus('Transaction updated');
     setMode('list');
     load(search, true);
   }
@@ -185,6 +192,8 @@ export function Transactions({ onNavigate, initialFilter, isActive, showHints }:
     const newDisplay = editName.trim();
     const catChanged = newCat !== selected.category;
     const nameChanged = newDisplay.length > 0;
+    const newClassification = TRANSACTION_CLASSIFICATIONS[editClassificationCursor];
+    const classificationChanged = newClassification !== selected.classification;
 
     const saved: string[] = [];
 
@@ -197,6 +206,10 @@ export function Transactions({ onNavigate, initialFilter, isActive, showHints }:
       if (nameChanged) {
         await upsertNameRule(editPattern, editMatchType, newDisplay);
         saved.push('name rule');
+      }
+      if (classificationChanged) {
+        await setTransactionClassification(selected.id, newClassification);
+        saved.push('classification');
       }
     } catch (e) {
       showStatus(e instanceof Error ? e.message : 'Failed to save rule', 4000);
@@ -300,7 +313,7 @@ export function Transactions({ onNavigate, initialFilter, isActive, showHints }:
     }
 
     if (mode === 'edit') {
-      const EDIT_FIELDS: EditField[] = ['name', 'category', 'pattern', 'type'];
+      const EDIT_FIELDS: EditField[] = ['name', 'category', 'classification', 'pattern', 'type'];
       if (key.escape) { setMode('list'); return; }
       if (key.return) {
         if (editPattern.trim()) { void saveAsRule(); } else { saveToTransaction(); }
@@ -314,6 +327,9 @@ export function Transactions({ onNavigate, initialFilter, isActive, showHints }:
       } else if (editField === 'category') {
         if (key.leftArrow) { setEditCatCursor((c) => Math.max(0, c - 1)); return; }
         if (key.rightArrow) { setEditCatCursor((c) => Math.min(categories.length - 1, c + 1)); return; }
+      } else if (editField === 'classification') {
+        if (key.leftArrow) { setEditClassificationCursor((c) => Math.max(0, c - 1)); return; }
+        if (key.rightArrow) { setEditClassificationCursor((c) => Math.min(TRANSACTION_CLASSIFICATIONS.length - 1, c + 1)); return; }
       } else if (editField === 'pattern') {
         if (key.backspace || key.delete) { setEditPattern((p) => p.slice(0, -1)); return; }
         if (input && !key.ctrl && !key.meta) { setEditPattern((p) => p + input); return; }
@@ -387,6 +403,13 @@ export function Transactions({ onNavigate, initialFilter, isActive, showHints }:
         return;
       }
       if (input === 'c' && selected?.manual_category) clearOverride();
+      if (input === 'v' && selected?.manual_classification) {
+        void clearTransactionClassificationOverride(selected.id).then(() => {
+          showStatus('Classification override cleared');
+          load(search, true);
+        });
+        return;
+      }
       if (input === 'C' && txs.length > 0) {
         clearOverridesBulk(txs.map((t) => t.id));
         const count = txs.filter((t) => t.manual_category).length;
@@ -484,7 +507,7 @@ export function Transactions({ onNavigate, initialFilter, isActive, showHints }:
       </Box>
       <Text dimColor>
         {showHints
-          ? `[/] search  ·  [f] filter  ·  ${from ? '← →  ·  ' : ''}[s] sort  ·  Enter edit  [g] tag  [i] ignore  [x] delete  ·  [S] sync`
+          ? `[/] search  ·  [f] filter  ·  ${from ? '← →  ·  ' : ''}[s] sort  ·  Enter edit  [v] auto class  [i] ignore  ·  [S] sync`
           : '[/] search'}
       </Text>
 
@@ -534,6 +557,14 @@ export function Transactions({ onNavigate, initialFilter, isActive, showHints }:
             {hasTags && isSelected && (
               <Box paddingLeft={14}>
                 <Text color={C_ACCENT}>{truncate('# ' + tx.tag_names, inner - 14)}</Text>
+              </Box>
+            )}
+            {isSelected && (
+              <Box paddingLeft={14} gap={2}>
+                <Text dimColor>classification</Text>
+                <Text color={tx.classification === 'NEEDS_REVIEW' ? C_WARNING : tx.manual_classification ? C_MANUAL : undefined}>
+                  {tx.classification ?? 'NEEDS_REVIEW'}{tx.manual_classification ? ' ◆' : ''}{tx.pending ? ' · pending' : ''}
+                </Text>
               </Box>
             )}
           </Box>
@@ -621,6 +652,7 @@ export function Transactions({ onNavigate, initialFilter, isActive, showHints }:
           <Box marginTop={1} flexDirection="column" gap={1}>
             <EditTextField label="Name" labelWidth={12} active={editField === 'name'} value={editName} color={C_WARNING} placeholder="type new name…" emptyText="(unchanged)" />
             <EditToggleField label="Category" labelWidth={12} active={editField === 'category'} value={categories[editCatCursor] ?? '—'} />
+            <EditToggleField label="Class" labelWidth={12} active={editField === 'classification'} value={TRANSACTION_CLASSIFICATIONS[editClassificationCursor]} />
             <EditTextField label="Pattern" labelWidth={12} active={editField === 'pattern'} value={editPattern} color={C_MANUAL} placeholder="optional — saves as rule" emptyText="—" />
             <EditToggleField label="Match type" labelWidth={12} active={editField === 'type'} value={editMatchType} />
           </Box>

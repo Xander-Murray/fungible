@@ -842,25 +842,27 @@ describe('Transactions', () => {
     });
   });
 
-  it('↓↓ navigates to Pattern field and typing shows match count', async () => {
+  it('↓↓↓ navigates to Pattern field and typing shows match count', async () => {
     const r = txns();
     await waitFor(() => expect(frame(r)).toContain('Trader Joes'));
     r.stdin.write('\r');
     await waitFor(() => expect(frame(r)).toContain('← Grocery')); // panel open
     r.stdin.write('\x1b[B'); // name → category
     r.stdin.write('\x1b[B'); // category → pattern
+    r.stdin.write('\x1b[B'); // classification → pattern
     await waitFor(() => expect(frame(r)).toContain('optional')); // Pattern field active (placeholder)
     for (const ch of 'Trader') r.stdin.write(ch);
     await waitFor(() => expect(frame(r)).toContain('transactions match'));
   });
 
-  it('↓↓↓ navigates to Match type, ← → toggles to regex', async () => {
+  it('↓↓↓↓ navigates to Match type, ← → toggles to regex', async () => {
     const r = txns();
     await waitFor(() => expect(frame(r)).toContain('Trader Joes'));
     r.stdin.write('\r');
     await waitFor(() => expect(frame(r)).toContain('← Grocery')); // panel open
     r.stdin.write('\x1b[B'); // name → category
     r.stdin.write('\x1b[B'); // category → pattern
+    r.stdin.write('\x1b[B'); // classification → pattern
     r.stdin.write('\x1b[B'); // pattern → type
     await waitFor(() => expect(frame(r)).toContain('(unchanged)')); // name inactive = type field reached
     r.stdin.write('\x1b[C'); // → toggle name → regex
@@ -878,6 +880,7 @@ describe('Transactions', () => {
     r.stdin.write('\x1b[C'); // cycle Grocery → Income
     // Navigate to Pattern and type a pattern
     r.stdin.write('\x1b[B'); // category → pattern
+    r.stdin.write('\x1b[B'); // classification → pattern
     await waitFor(() => expect(frame(r)).toContain('optional'));
     for (const ch of 'Trader') r.stdin.write(ch);
     await waitFor(() => expect(frame(r)).toContain('transactions match'));
