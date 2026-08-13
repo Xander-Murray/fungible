@@ -127,9 +127,9 @@ describe('Dashboard', () => {
     expect(longestLine).toBeLessThanOrEqual(80);
   });
 
-  it('shows a concise top-spending heading', async () => {
+  it('shows the spending-by-category heading', async () => {
     const r = dash();
-    await waitFor(() => expect(frame(r)).toContain('TOP SPENDING · 3 OF 4'));
+    await waitFor(() => expect(frame(r)).toContain('SPENDING BY CATEGORY'));
   });
 
   it('shows integrated weekly, monthly, income, obligations, and savings accountability', async () => {
@@ -206,7 +206,7 @@ describe('Dashboard', () => {
     });
   });
 
-  it('shows only the three largest spending categories', async () => {
+  it('shows every spending category and reconciles them to expenses', async () => {
     // Exercise the two cases that used to break reconciliation: a refund inside a
     // real category (must NET to 200, not show 300) and an income+spend mix inside
     // Uncategorized (must SPLIT — the $500 spend shows, the $2000 inflow is income).
@@ -224,29 +224,29 @@ describe('Dashboard', () => {
     const r = dash();
     await waitFor(() => expect(frame(r)).toContain('Uncategorized'));
 
-    const [statRegion, catRegion] = frame(r).split('TOP SPENDING · 3 OF 6');
+    const [statRegion, catRegion] = frame(r).split('SPENDING BY CATEGORY');
     const money = (s: string) =>
       [...s.matchAll(/[-+]?\$[\d,]+\.\d{2}/g)].map((m) => parseFloat(m[0].replace(/[$,+]/g, '')));
     const categoryAmounts = money(catRegion);
 
     expect(statRegion).toContain('$1,088.99'); // 388.99 seeded + 200 net Travel + 500 uncat
-    expect(categoryAmounts).toEqual([500, 205, 200]);
+    expect(categoryAmounts.reduce((sum, amount) => sum + amount, 0)).toBeCloseTo(1088.99, 2);
   });
 
-  it('keeps category navigation and merchant drill within the displayed top three', async () => {
+  it('keeps navigation and merchant drill available for categories below the top three', async () => {
     const r = dash();
-    await waitFor(() => expect(frame(r)).toContain('TOP SPENDING · 3 OF 4'));
+    await waitFor(() => expect(frame(r)).toContain('SPENDING BY CATEGORY'));
     r.stdin.write('\x1b[B');
     await waitFor(() => expect(frame(r)).toContain('▶ Bills & Utilities'));
     r.stdin.write('\x1b[B');
     await waitFor(() => expect(frame(r)).toContain('▶ Dining'));
-    r.stdin.write('\x1b[B'); // clamps on Dining, the third visible category
-    await waitFor(() => expect(frame(r)).toContain('▶ Dining'));
+    r.stdin.write('\x1b[B');
+    await waitFor(() => expect(frame(r)).toContain('▶ Shopping'));
     r.stdin.write('m');
     await waitFor(() => {
       const f = frame(r);
-      expect(f).toContain('TOP MERCHANTS · Dining');
-      expect(f).toContain('Sweetgreen');
+      expect(f).toContain('TOP MERCHANTS · Shopping');
+      expect(f).toContain('Amazon');
     });
   });
 
@@ -284,7 +284,7 @@ describe('Dashboard', () => {
     r.stdin.write('\t'); // account
     await waitFor(() => expect(frame(r)).toContain('Test Checking'));
     r.stdin.write('\t'); // would be owner, but skipped → categories
-    await waitFor(() => expect(frame(r)).toContain('TOP SPENDING'));
+    await waitFor(() => expect(frame(r)).toContain('SPENDING BY CATEGORY'));
     expect(frame(r)).not.toContain('SPENDING BY OWNER');
   });
 
@@ -349,7 +349,7 @@ describe('Dashboard', () => {
     r.stdin.write('m');
     await waitFor(() => expect(frame(r)).toContain('TOP MERCHANTS'));
     r.stdin.write('\x1b');
-    await waitFor(() => expect(frame(r)).toContain('TOP SPENDING'));
+    await waitFor(() => expect(frame(r)).toContain('SPENDING BY CATEGORY'));
   });
 
   it('left arrow in merchant drill navigates to previous period and refreshes merchants', async () => {

@@ -380,7 +380,7 @@ export function Dashboard({ onNavigate, isActive, initialFilter, showHints, budg
       // buckets, drift detail rows, or the plain category breakdown.
       const displayCats: Array<{ category: string }> = scorecardMode
         ? (detailMode ? (catDrift ?? []) : scoreRows)
-        : (displaySummary?.byCategory ?? []).slice(0, 3);
+        : (displaySummary?.byCategory ?? []);
       if (key.upArrow)   { setCatCursor((c) => Math.max(0, c - 1)); return; }
       if (key.downArrow) { setCatCursor((c) => Math.min(displayCats.length - 1, c + 1)); return; }
       if (input === 'm' && !scorecardMode) {
@@ -484,7 +484,6 @@ export function Dashboard({ onNavigate, isActive, initialFilter, showHints, budg
   const displayFlexData = filteredFlex    ?? flexData;
   const maxCategorySpend = (displaySummary?.byCategory[0]?.total ?? categories[0]?.total) ?? 1;
   const totalExpenses = displaySummary?.expenses ?? 0;
-  const topCategories = (displaySummary?.byCategory ?? []).slice(0, 3);
   const budgetAlerts = useMemo(() => {
     if (!budgetData) return [];
     const monthly = new Map(budgetData.monthly.categories.map((row) => [row.category, row]));
@@ -792,7 +791,7 @@ export function Dashboard({ onNavigate, isActive, initialFilter, showHints, budg
                   ? `TOP MERCHANTS · ${merchantDrill.category}`
                   : scorecardMode && !detailMode
                     ? 'SPENDING BY CATEGORY · VS TYPICAL (12M MEDIAN)'
-                    : `TOP SPENDING · ${Math.min(3, displaySummary.byCategory.length)} OF ${displaySummary.byCategory.length}`}
+                    : 'SPENDING BY CATEGORY'}
               </SectionHeader>
               {merchantDrill ? (
                 <Box flexDirection="column" marginTop={1}>
@@ -925,7 +924,7 @@ export function Dashboard({ onNavigate, isActive, initialFilter, showHints, budg
                   {(displaySummary?.byCategory ?? []).length === 0 ? (
                     <Text dimColor>{search ? 'No matching transactions for this period.' : 'No expense data for this period.'}</Text>
                   ) : (
-                    topCategories.map((row, i) => {
+                    (displaySummary?.byCategory ?? []).map((row, i) => {
                       const isSelected = catCursor === i;
                       return (
                         <SelectableRow key={`${row.category}-${i}`} selected={isSelected}>
