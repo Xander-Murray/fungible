@@ -61,6 +61,13 @@ function statusLabel(status: string): string {
   return status.replaceAll('_', ' ');
 }
 
+function compactStatus(status: WeeklyBudgetStatus | BudgetStatus): string {
+  if (status === 'OVER_BUDGET') return 'OVER';
+  if (status === 'ESSENTIALS_ONLY') return 'ESSENTIALS';
+  if (status === 'WARNING') return 'WARN';
+  return 'GOOD';
+}
+
 
 const FLEX_TIERS: Array<{ key: keyof FlexSummary; label: string; color: string }> = [
   { key: 'fixed',         label: 'Fixed',        color: FLEX_COLORS.fixed         },
@@ -101,6 +108,7 @@ export function Dashboard({ onNavigate, isActive, initialFilter, showHints, budg
   const [merchantCursor, setMerchantCursor] = useState(0);
   const [merchantDrill, setMerchantDrill] = useState<{ category: string; from: string; to: string } | null>(null);
   const [budgetData, setBudgetData] = useState<BudgetDashboardStatus | null>(null);
+  const [budgetExpanded, setBudgetExpanded] = useState(false);
   const accountabilityDate = useMemo(
     () => budgetReferenceDate ?? (range === 'week' ? anchor : now),
     [budgetReferenceDate?.getTime(), range, anchor.toISOString().slice(0, 10), now.getTime()],
@@ -289,7 +297,7 @@ export function Dashboard({ onNavigate, isActive, initialFilter, showHints, budg
   const dashAcctNameW = Math.max(12, inner - 28);
   // Merchants: [sel=2] gap [name] gap [amount=10] gap [count=6] gap [pct=6]
   const merchantNameW = Math.max(12, inner - 30);
-  const budgetBarW = Math.max(10, Math.min(30, inner - 52));
+  const budgetBarW = Math.max(10, Math.min(20, inner - 58));
 
   useInput((input, key) => {
     if (merchantDrill) {
@@ -343,6 +351,11 @@ export function Dashboard({ onNavigate, isActive, initialFilter, showHints, budg
       return;
     }
 
+    if (input === 'b') {
+      setBudgetExpanded((expanded) => !expanded);
+      return;
+    }
+
     if (key.tab) {
       setView((v) => v === 'categories' ? 'flex' : v === 'flex' ? 'account' : v === 'account' && hasOwners ? 'owner' : 'categories');
       return;
@@ -367,7 +380,7 @@ export function Dashboard({ onNavigate, isActive, initialFilter, showHints, budg
       // buckets, drift detail rows, or the plain category breakdown.
       const displayCats: Array<{ category: string }> = scorecardMode
         ? (detailMode ? (catDrift ?? []) : scoreRows)
-        : (displaySummary?.byCategory ?? []);
+        : (displaySummary?.byCategory ?? []).slice(0, 3);
       if (key.upArrow)   { setCatCursor((c) => Math.max(0, c - 1)); return; }
       if (key.downArrow) { setCatCursor((c) => Math.min(displayCats.length - 1, c + 1)); return; }
       if (input === 'm' && !scorecardMode) {
@@ -471,6 +484,21 @@ export function Dashboard({ onNavigate, isActive, initialFilter, showHints, budg
   const displayFlexData = filteredFlex    ?? flexData;
   const maxCategorySpend = (displaySummary?.byCategory[0]?.total ?? categories[0]?.total) ?? 1;
   const totalExpenses = displaySummary?.expenses ?? 0;
+  const topCategories = (displaySummary?.byCategory ?? []).slice(0, 3);
+  const budgetAlerts = useMemo(() => {
+    if (!budgetData) return [];
+    const monthly = new Map(budgetData.monthly.categories.map((row) => [row.category, row]));
+    const weekly = new Map(budgetData.weeklyFlexible.categories.map((row) => [row.category, row]));
+    const names = [...new Set([...monthly.keys(), ...weekly.keys()])];
+    return names
+      .map((category) => ({ category, monthly: monthly.get(category), weekly: weekly.get(category) }))
+      .filter(({ category, monthly: month, weekly: week }) => (
+        (month?.status !== undefined && month.status !== 'GOOD')
+        || (week?.status !== undefined && week.status !== 'GOOD')
+        || (category === 'Other Chase spending' && (week?.spent ?? 0) > 0)
+      ));
+  }, [budgetData]);
+  const goalsOnTrack = budgetData?.goals.goals.every((goal) => goal.status === 'ON_TRACK') ?? false;
 
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1}>
@@ -542,89 +570,139 @@ export function Dashboard({ onNavigate, isActive, initialFilter, showHints, budg
 
       {budgetData && (
         <Box flexDirection="column" marginTop={1}>
-          <SectionHeader>PERSONAL BUDGET</SectionHeader>
-          <Box marginTop={1} gap={2}>
-            <Text bold>WEEKLY CHASE</Text>
-            <Text bold color={accountabilityColor(budgetData.weekly.status)}>
-              {statusLabel(budgetData.weekly.status)}
-            </Text>
-            <Text>{fmt(budgetData.weekly.spent)} / {fmt(budgetData.weekly.limit)}</Text>
+          <Box justifyContent="space-between">
+            <Box gap={2}>
+              <SectionHeader>FINANCIAL SNAPSHOT</SectionHeader>
+              <Text dimColor>{budgetData.weekly.from} – {budgetData.weekly.to}</Text>
+            </Box>
+            <Text dimColor>[b] {budgetExpanded ? 'compact' : 'details'}</Text>
+          </Box>
+          <Box marginTop={1}>
+            <Box gap={2}>
+              <Text bold>THIS WEEK · CHASE</Text>
+              <Text bold color={accountabilityColor(budgetData.weekly.status)}>
+                {statusLabel(budgetData.weekly.status)}
+              </Text>
+              <Text>{fmt(budgetData.weekly.spent)} / {fmt(budgetData.weekly.limit)}</Text>
+            </Box>
+          </Box>
+          <Box gap={2}>
             <Text color={accountabilityColor(budgetData.weekly.status)}>
               {bar(budgetData.weekly.spent, budgetData.weekly.limit, budgetBarW)}
             </Text>
             <Text bold color={budgetData.weekly.remaining >= 0 ? C_POSITIVE : C_NEGATIVE}>
-              {fmt(budgetData.weekly.remaining)} remaining
+              {fmt(budgetData.weekly.remaining)} remaining · {Math.round(budgetData.weekly.percentage)}%
             </Text>
           </Box>
-          <Box marginTop={1} gap={2}>
-            <Text dimColor>VERIFIED INCOME</Text>
-            <Text bold color={C_POSITIVE}>{fmt(budgetData.verifiedIncome)}</Text>
-            <Text dimColor>GOALS · {fmt(budgetData.goals.combinedMonthlyTarget)}/mo minimum</Text>
-          </Box>
-          <Box flexDirection="column">
-            {budgetData.goals.goals.map((goal) => (
-              <Box key={goal.key} gap={2}>
-                <Text>{goal.label.padEnd(18)}</Text>
-                <Text color={accountabilityColor(goal.status)}>
-                  {fmt(goal.contributed)} / {fmt(goal.expectedToDate)} due · {fmt(goal.monthlyTarget)}/mo · {goal.completedWeeks} complete · {goal.missedWeeks} missed · {statusLabel(goal.status)}
-                </Text>
-              </Box>
-            ))}
-          </Box>
-          <Box marginTop={1} gap={2}>
-            <Text dimColor>FIXED</Text>
-            {budgetData.fixedObligations.map((item) => (
-              <Text key={item.key}>
-                {item.label} {item.spent > 0 ? fmt(item.spent) : '—'} / {item.target === null ? 'not set' : `${fmt(item.target)}/mo`}
-              </Text>
-            ))}
-          </Box>
-          <Box marginTop={1} gap={2}>
-            <Text bold>MONTHLY FLEXIBLE</Text>
+          <Box gap={2}>
+            <Text bold>THIS MONTH</Text>
             <Text>{fmt(budgetData.monthly.spent)} / {fmt(budgetData.monthly.limit)}</Text>
             <Text color={accountabilityColor(budgetData.monthly.status)} bold>
               {fmt(budgetData.monthly.remaining)} remaining · {Math.round(budgetData.monthly.percentage)}% · {statusLabel(budgetData.monthly.status)}
             </Text>
           </Box>
-          <Box gap={2}>
-            <Text bold>WEEKLY FLEXIBLE</Text>
-            <Text>{fmt(budgetData.weekly.spent)} / {fmt(budgetData.weekly.limit)}</Text>
-            <Text color={accountabilityColor(budgetData.weekly.status)} bold>
-              {fmt(budgetData.weekly.remaining)} remaining · {Math.round(budgetData.weekly.percentage)}% · {statusLabel(budgetData.weekly.status)}
-            </Text>
-          </Box>
-          <Box flexDirection="column">
-            {budgetData.monthly.categories.map((category) => (
-              <Box key={category.category} gap={2}>
-                <Text>{category.category.padEnd(24)}</Text>
-                <Text>{`${fmt(category.spent)} / ${fmt(category.limit)}`.padStart(20)}</Text>
-                <Text color={accountabilityColor(category.status)}>
-                  {`${fmt(category.remaining)} left · ${Math.round(category.percentage)}% · ${statusLabel(category.status)}`}
-                </Text>
+
+          {budgetExpanded ? (
+            <>
+              <Box marginTop={1} gap={2}>
+                <Text dimColor>VERIFIED INCOME</Text>
+                <Text bold color={C_POSITIVE}>{fmt(budgetData.verifiedIncome)}</Text>
+                <Text dimColor>GOALS · {fmt(budgetData.goals.combinedMonthlyTarget)}/mo minimum</Text>
               </Box>
-            ))}
-          </Box>
-          <Box marginTop={1} gap={2}>
-            <Text bold>WEEKLY CATEGORY PACE</Text>
-            <Text>{fmt(budgetData.weeklyFlexible.spent)} / {fmt(budgetData.weeklyFlexible.limit)}</Text>
-            <Text dimColor>{budgetData.weeklyFlexible.from} – {budgetData.weeklyFlexible.to}</Text>
-          </Box>
-          <Box>
-            <Text color={accountabilityColor(budgetData.weeklyFlexible.status)} bold>
-              {fmt(budgetData.weeklyFlexible.remaining)} remaining · {Math.round(budgetData.weeklyFlexible.percentage)}% · {statusLabel(budgetData.weeklyFlexible.status)}
-            </Text>
-          </Box>
-          <Box flexDirection="column">
-            {budgetData.weeklyFlexible.categories.map((category) => (
-              <Box key={category.category} gap={2}>
-                <Text>{category.category.padEnd(24)}</Text>
-                <Text>{`${fmt(category.spent)} / ${fmt(category.limit)}`.padStart(20)}</Text>
-                <Text color={accountabilityColor(category.status)}>
-                  {`${fmt(category.remaining)} left · ${Math.round(category.percentage)}% · ${statusLabel(category.status)}`}
-                </Text>
+              <Box flexDirection="column">
+                {budgetData.goals.goals.map((goal) => (
+                  <Box key={goal.key} gap={2}>
+                    <Text>{goal.label.padEnd(18)}</Text>
+                    <Text color={accountabilityColor(goal.status)}>
+                      {fmt(goal.contributed)} / {fmt(goal.expectedToDate)} due · {fmt(goal.monthlyTarget)}/mo · {goal.completedWeeks} complete · {goal.missedWeeks} missed · {statusLabel(goal.status)}
+                    </Text>
+                  </Box>
+                ))}
               </Box>
-            ))}
-          </Box>
+              <Box marginTop={1} gap={2}>
+                <Text dimColor>FIXED</Text>
+                {budgetData.fixedObligations.map((item) => (
+                  <Text key={item.key}>
+                    {item.label} {item.spent > 0 ? fmt(item.spent) : '—'} / {item.target === null ? 'not set' : `${fmt(item.target)}/mo`}
+                  </Text>
+                ))}
+              </Box>
+              <Box marginTop={1}><SectionHeader>MONTHLY CATEGORIES</SectionHeader></Box>
+              <Box flexDirection="column">
+                {budgetData.monthly.categories.map((category) => (
+                  <Box key={category.category} gap={2}>
+                    <Text>{category.category.padEnd(24)}</Text>
+                    <Text>{`${fmt(category.spent)} / ${fmt(category.limit)}`.padStart(20)}</Text>
+                    <Text color={accountabilityColor(category.status)}>
+                      {`${fmt(category.remaining)} left · ${Math.round(category.percentage)}% · ${statusLabel(category.status)}`}
+                    </Text>
+                  </Box>
+                ))}
+              </Box>
+              <Box marginTop={1}><SectionHeader>WEEKLY CHASE CATEGORIES</SectionHeader></Box>
+              <Box flexDirection="column">
+                {budgetData.weeklyFlexible.categories.map((category) => (
+                  <Box key={category.category} gap={2}>
+                    <Text>{category.category.padEnd(24)}</Text>
+                    <Text>{`${fmt(category.spent)} / ${fmt(category.limit)}`.padStart(20)}</Text>
+                    <Text color={accountabilityColor(category.status)}>
+                      {`${fmt(category.remaining)} left · ${Math.round(category.percentage)}% · ${statusLabel(category.status)}`}
+                    </Text>
+                  </Box>
+                ))}
+              </Box>
+            </>
+          ) : (
+            <>
+              <Box marginTop={1}><SectionHeader>NEEDS ATTENTION</SectionHeader></Box>
+              <Box flexDirection="column">
+                {budgetAlerts.length === 0 ? (
+                  <Text color={C_POSITIVE}>All categories within pace</Text>
+                ) : budgetAlerts.map(({ category, weekly, monthly }) => (
+                  <Box key={category} gap={2}>
+                    <Text>{truncate(category === 'Other Chase spending' ? 'Other Chase' : category, 18).padEnd(18)}</Text>
+                    {weekly && category === 'Other Chase spending' ? (
+                      <Text color={C_WARNING}>W {fmt(weekly.spent)} unbudgeted</Text>
+                    ) : weekly && (
+                      <Text color={accountabilityColor(weekly.status)}>
+                        W {fmt(weekly.remaining)} · {Math.round(weekly.percentage)}% {compactStatus(weekly.status)}
+                      </Text>
+                    )}
+                    {monthly && (
+                      <Text color={accountabilityColor(monthly.status)}>
+                        M {fmt(monthly.remaining)} · {Math.round(monthly.percentage)}% {compactStatus(monthly.status)}
+                      </Text>
+                    )}
+                  </Box>
+                ))}
+              </Box>
+              <Box marginTop={1} gap={2}>
+                <Text dimColor>INCOME</Text>
+                <Text color={C_POSITIVE}>{fmt(budgetData.verifiedIncome)} verified</Text>
+              </Box>
+              {goalsOnTrack ? (
+                <Box gap={2}>
+                  <Text dimColor>GOALS</Text>
+                  <Text color={C_POSITIVE}>ON TRACK · {budgetData.goals.goals.map((goal) => `${goal.key === 'roth' ? 'Roth' : 'Savings'} ${fmt(goal.contributed)}/${fmt(goal.expectedToDate)}`).join(' · ')}</Text>
+                </Box>
+              ) : (
+                <Box flexDirection="column">
+                  <Text dimColor>GOALS · ACTION NEEDED</Text>
+                  {budgetData.goals.goals.map((goal) => (
+                    <Text key={goal.key} color={accountabilityColor(goal.status)}>
+                      {goal.label} {fmt(goal.contributed)}/{fmt(goal.expectedToDate)} due · {statusLabel(goal.status)}
+                    </Text>
+                  ))}
+                </Box>
+              )}
+              <Text>
+                <Text dimColor>FIXED  </Text>
+                {budgetData.fixedObligations.map((item) => (
+                  `${item.key === 'tesla-payment' ? 'Tesla' : item.key === 'tesla-insurance' ? 'Insurance' : 'EV'} ${item.spent > 0 ? fmt(item.spent) : '—'}/${item.target === null ? 'unset' : fmt(item.target)}`
+                )).join(' · ')}
+              </Text>
+            </>
+          )}
           <Box marginTop={1}><Divider /></Box>
         </Box>
       )}
@@ -695,7 +773,8 @@ export function Dashboard({ onNavigate, isActive, initialFilter, showHints, budg
         </Box>
       ) : displaySummary ? (
         <>
-          <Box gap={6} marginY={1}>
+          <Box gap={4} marginY={1}>
+            <Text bold>{formatPeriodLabel(range, anchor)} CASH FLOW</Text>
             <StatCard label="Income" value={fmt(displaySummary.income)} color={C_POSITIVE} />
             <StatCard label="Expenses" value={fmt(displaySummary.expenses)} color={C_NEGATIVE} />
             <StatCard label="Net" value={fmtSigned(displaySummary.net)} color={displaySummary.net >= 0 ? C_POSITIVE : C_NEGATIVE} />
@@ -713,7 +792,7 @@ export function Dashboard({ onNavigate, isActive, initialFilter, showHints, budg
                   ? `TOP MERCHANTS · ${merchantDrill.category}`
                   : scorecardMode && !detailMode
                     ? 'SPENDING BY CATEGORY · VS TYPICAL (12M MEDIAN)'
-                    : 'SPENDING BY CATEGORY'}
+                    : `TOP SPENDING · ${Math.min(3, displaySummary.byCategory.length)} OF ${displaySummary.byCategory.length}`}
               </SectionHeader>
               {merchantDrill ? (
                 <Box flexDirection="column" marginTop={1}>
@@ -846,7 +925,7 @@ export function Dashboard({ onNavigate, isActive, initialFilter, showHints, budg
                   {(displaySummary?.byCategory ?? []).length === 0 ? (
                     <Text dimColor>{search ? 'No matching transactions for this period.' : 'No expense data for this period.'}</Text>
                   ) : (
-                    (displaySummary?.byCategory ?? []).map((row, i) => {
+                    topCategories.map((row, i) => {
                       const isSelected = catCursor === i;
                       return (
                         <SelectableRow key={`${row.category}-${i}`} selected={isSelected}>

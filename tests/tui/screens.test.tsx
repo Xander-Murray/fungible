@@ -118,9 +118,18 @@ describe('Dashboard', () => {
     });
   });
 
-  it('shows SPENDING BY CATEGORY heading', async () => {
+  it('keeps the compact dashboard within an 80-column terminal', async () => {
     const r = dash();
-    await waitFor(() => expect(frame(r)).toContain('SPENDING BY CATEGORY'));
+    Object.defineProperty(r.stdout, 'columns', { value: 80, configurable: true });
+    r.stdout.emit('resize');
+    await waitFor(() => expect(frame(r)).toContain('FINANCIAL SNAPSHOT'));
+    const longestLine = Math.max(...frame(r).split('\n').map((line) => line.length));
+    expect(longestLine).toBeLessThanOrEqual(80);
+  });
+
+  it('shows a concise top-spending heading', async () => {
+    const r = dash();
+    await waitFor(() => expect(frame(r)).toContain('TOP SPENDING · 3 OF 4'));
   });
 
   it('shows integrated weekly, monthly, income, obligations, and savings accountability', async () => {
@@ -146,27 +155,32 @@ describe('Dashboard', () => {
     const r = dash({ budgetReferenceDate: new Date(2026, 4, 6, 12) });
     await waitFor(() => {
       const f = frame(r);
-      expect(f).toContain('PERSONAL BUDGET');
-      expect(f).toContain('WEEKLY CHASE');
+      expect(f).toContain('FINANCIAL SNAPSHOT');
+      expect(f).toContain('THIS WEEK · CHASE');
       expect(f).toContain('ESSENTIALS ONLY');
-      expect(f).toContain('$20.00 remaining');
-      expect(f).toContain('VERIFIED INCOME');
-      expect(f).toContain('$3,500.00');
-      expect(f).toContain('Roth IRA');
+      expect(f).toContain('$165.00 / $185.00');
+      expect(f).toContain('$20.00 remaining · 89%');
+      expect(f).toContain('THIS MONTH');
+      expect(f).toContain('$293.99 / $805.00');
+      expect(f).toContain('NEEDS ATTENTION');
+      expect(f).toContain('W -$3.63 · 109% OVER');
+      expect(f).toContain('M -$55.00 · 137% OVER');
+      expect(f).toContain('INCOME  $3,500.00 verified');
+      expect(f).toContain('GOALS  ON TRACK · Roth $100.00/$100.00 · Savings $150.00/$150.00');
+      expect(f).toContain('FIXED  Tesla —/$466.00 · Insurance —/unset · EV —/unset');
+      expect(f).toContain('2026-05-04 – 2026-05-10');
+      expect(f).not.toContain('WEEKLY CATEGORY PACE');
+    });
+
+    r.stdin.write('b');
+    await waitFor(() => {
+      const f = frame(r);
+      expect(f).toContain('MONTHLY CATEGORIES');
+      expect(f).toContain('WEEKLY CHASE CATEGORIES');
       expect(f).toContain('$100.00 / $100.00 due · $217.00/mo · 2 complete · 0 missed · ON TRACK');
       expect(f).toContain('$150.00 / $150.00 due · $325.00/mo · 2 complete · 0 missed · ON TRACK');
-      expect(f).toContain('Tesla payment — / $466.00/mo');
-      expect(f).toContain('MONTHLY FLEXIBLE');
-      expect(f).toContain('$293.99 / $805.00');
-      expect(f).toContain('WEEKLY FLEXIBLE');
-      expect(f.match(/\$165\.00 \/ \$185\.00/g)).toHaveLength(3);
-      expect(f).toContain('$20.00 remaining · 89% · ESSENTIALS ONLY');
-      expect(f).toContain('WEEKLY CATEGORY PACE');
-      expect(f).toContain('2026-05-04 – 2026-05-10');
-      expect(f.match(/\$20\.00 remaining · 89% · ESSENTIALS ONLY/g)).toHaveLength(2);
       expect(f).toContain('$45.00 / $41.37');
       expect(f).toContain('-$3.63 left · 109% · OVER BUDGET');
-      expect(f).toContain('Groceries');
     });
   });
 
@@ -192,7 +206,7 @@ describe('Dashboard', () => {
     });
   });
 
-  it('SPENDING BY CATEGORY lines sum to the displayed Expenses total', async () => {
+  it('shows only the three largest spending categories', async () => {
     // Exercise the two cases that used to break reconciliation: a refund inside a
     // real category (must NET to 200, not show 300) and an income+spend mix inside
     // Uncategorized (must SPLIT — the $500 spend shows, the $2000 inflow is income).
@@ -210,16 +224,30 @@ describe('Dashboard', () => {
     const r = dash();
     await waitFor(() => expect(frame(r)).toContain('Uncategorized'));
 
-    const [statRegion, catRegion] = frame(r).split('SPENDING BY CATEGORY');
+    const [statRegion, catRegion] = frame(r).split('TOP SPENDING · 3 OF 6');
     const money = (s: string) =>
       [...s.matchAll(/[-+]?\$[\d,]+\.\d{2}/g)].map((m) => parseFloat(m[0].replace(/[$,+]/g, '')));
-    // Stat cards render in order Income · Expenses · Net, so Expenses is the 2nd $ token.
-    const summaryRegion = statRegion.slice(statRegion.lastIndexOf('\n  Income'));
-    const expenses = money(summaryRegion)[1];
-    const categoryTotal = money(catRegion).reduce((sum, n) => sum + n, 0);
+    const categoryAmounts = money(catRegion);
 
-    expect(expenses).toBeCloseTo(1088.99, 2);          // 388.99 seeded + 200 net Travel + 500 uncat
-    expect(categoryTotal).toBeCloseTo(expenses, 2);    // detailed lines reconcile to the total
+    expect(statRegion).toContain('$1,088.99'); // 388.99 seeded + 200 net Travel + 500 uncat
+    expect(categoryAmounts).toEqual([500, 205, 200]);
+  });
+
+  it('keeps category navigation and merchant drill within the displayed top three', async () => {
+    const r = dash();
+    await waitFor(() => expect(frame(r)).toContain('TOP SPENDING · 3 OF 4'));
+    r.stdin.write('\x1b[B');
+    await waitFor(() => expect(frame(r)).toContain('▶ Bills & Utilities'));
+    r.stdin.write('\x1b[B');
+    await waitFor(() => expect(frame(r)).toContain('▶ Dining'));
+    r.stdin.write('\x1b[B'); // clamps on Dining, the third visible category
+    await waitFor(() => expect(frame(r)).toContain('▶ Dining'));
+    r.stdin.write('m');
+    await waitFor(() => {
+      const f = frame(r);
+      expect(f).toContain('TOP MERCHANTS · Dining');
+      expect(f).toContain('Sweetgreen');
+    });
   });
 
   it('Tab cycles to flex view', async () => {
@@ -256,7 +284,7 @@ describe('Dashboard', () => {
     r.stdin.write('\t'); // account
     await waitFor(() => expect(frame(r)).toContain('Test Checking'));
     r.stdin.write('\t'); // would be owner, but skipped → categories
-    await waitFor(() => expect(frame(r)).toContain('SPENDING BY CATEGORY'));
+    await waitFor(() => expect(frame(r)).toContain('TOP SPENDING'));
     expect(frame(r)).not.toContain('SPENDING BY OWNER');
   });
 
@@ -321,7 +349,7 @@ describe('Dashboard', () => {
     r.stdin.write('m');
     await waitFor(() => expect(frame(r)).toContain('TOP MERCHANTS'));
     r.stdin.write('\x1b');
-    await waitFor(() => expect(frame(r)).toContain('SPENDING BY CATEGORY'));
+    await waitFor(() => expect(frame(r)).toContain('TOP SPENDING'));
   });
 
   it('left arrow in merchant drill navigates to previous period and refreshes merchants', async () => {
