@@ -1,5 +1,6 @@
 import { db } from './db.js';
 import { calcN } from './calculator.js';
+import { incomeClassification, spendingClassification } from './transaction-math.js';
 
 export type HealthData = {
   avgMonthlyExpenses: number;
@@ -18,18 +19,14 @@ export async function loadHealthData(): Promise<HealthData> {
   const [expRes, cashRes, liquidRes, retirementRes, debtRes, loanRes, nwRes] = await Promise.all([
     db.execute(`
       SELECT
-        COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0) / 12.0  AS avg_expenses,
-        COALESCE(-SUM(CASE WHEN amount < 0 THEN amount ELSE 0 END), 0) / 12.0 AS avg_income,
-        COALESCE(
-          -SUM(CASE WHEN amount < 0 THEN amount ELSE 0 END) -
-           SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END),
-          0
-        ) / 12.0 AS avg_savings
+        MAX(0, COALESCE(SUM(CASE WHEN ${spendingClassification('transactions')} THEN amount ELSE 0 END), 0)) / 12.0 AS avg_expenses,
+        COALESCE(SUM(CASE WHEN ${incomeClassification('transactions')} AND amount < 0 THEN -amount ELSE 0 END), 0) / 12.0 AS avg_income,
+        (COALESCE(SUM(CASE WHEN ${incomeClassification('transactions')} AND amount < 0 THEN -amount ELSE 0 END), 0)
+          - MAX(0, COALESCE(SUM(CASE WHEN ${spendingClassification('transactions')} THEN amount ELSE 0 END), 0))) / 12.0 AS avg_savings
       FROM transactions
       WHERE date >= date('now', '-12 months')
         AND pending = 0 AND ignored = 0
         AND category NOT IN (SELECT category FROM hidden_categories)
-        AND category != 'Transfer'
     `),
     db.execute(`
       SELECT COALESCE(SUM(bh.balance), 0) AS cash

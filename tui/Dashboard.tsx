@@ -791,7 +791,7 @@ export function Dashboard({ onNavigate, isActive, initialFilter, showHints, budg
                   ? `TOP MERCHANTS · ${merchantDrill.category}`
                   : scorecardMode && !detailMode
                     ? 'SPENDING BY CATEGORY · VS TYPICAL (12M MEDIAN)'
-                    : 'SPENDING BY CATEGORY'}
+                    : 'SPENDING BY CATEGORY · COMMITTED'}
               </SectionHeader>
               {merchantDrill ? (
                 <Box flexDirection="column" marginTop={1}>

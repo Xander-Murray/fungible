@@ -319,12 +319,13 @@ describe('getCategoryDriftData', () => {
     expect(result.find((r) => r.category === 'Food')).toBeDefined();
   });
 
-  it('excludes pending and ignored transactions', async () => {
+  it('includes pending commitments and excludes ignored transactions', async () => {
     await insertTx({ date: '2026-05-15', amount: 100, category: 'Food', pending: 1 });
     await insertTx({ date: '2026-05-15', amount: 100, category: 'Food', ignored: 1 });
 
     const result = await getCategoryDriftData(current, lastPeriod, lastYear, rolling12);
-    expect(result).toHaveLength(0);
+    expect(result).toHaveLength(1);
+    expect(result[0].current).toBe(100);
   });
 
   it('sorts results by current spend descending', async () => {

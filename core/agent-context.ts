@@ -5,6 +5,7 @@
  */
 
 import { db } from './db.js';
+import { incomeClassification, spendingClassification } from './transaction-math.js';
 import { yearsToFire } from './health.js';
 import { getSetting, PRETAX_MONTHLY_KEY } from './settings.js';
 import { isAssetAccount, isLiabilityAccount } from './account-class.js';
@@ -158,18 +159,14 @@ export async function getFinancialHealth(
   const [expResult, pretaxRaw] = await Promise.all([
     db.execute(`
       SELECT
-        COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0) / 12.0 AS avg_expenses,
-        COALESCE(-SUM(CASE WHEN amount < 0 THEN amount ELSE 0 END), 0) / 12.0 AS avg_income,
-        COALESCE(
-          -SUM(CASE WHEN amount < 0 THEN amount ELSE 0 END) -
-           SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END),
-          0
-        ) / 12.0 AS avg_savings
+        MAX(0, COALESCE(SUM(CASE WHEN ${spendingClassification('transactions')} THEN amount ELSE 0 END), 0)) / 12.0 AS avg_expenses,
+        COALESCE(SUM(CASE WHEN ${incomeClassification('transactions')} AND amount < 0 THEN -amount ELSE 0 END), 0) / 12.0 AS avg_income,
+        (COALESCE(SUM(CASE WHEN ${incomeClassification('transactions')} AND amount < 0 THEN -amount ELSE 0 END), 0)
+          - MAX(0, COALESCE(SUM(CASE WHEN ${spendingClassification('transactions')} THEN amount ELSE 0 END), 0))) / 12.0 AS avg_savings
       FROM transactions
       WHERE date >= date('now', '-12 months')
         AND pending = 0 AND ignored = 0
         AND category NOT IN (SELECT category FROM hidden_categories)
-        AND category != 'Transfer'
     `),
     getSetting(PRETAX_MONTHLY_KEY),
   ]);
@@ -236,7 +233,9 @@ export async function getSpendingTrends(months = 12, category?: string): Promise
   return Promise.all(periods.map(async ({ year, month, from, to }) => {
     const result = await db.execute({
       sql: `
-        SELECT category, SUM(amount) as total
+        SELECT category,
+          SUM(CASE WHEN ${spendingClassification('transactions')} THEN amount ELSE 0 END) as spending,
+          SUM(CASE WHEN ${incomeClassification('transactions')} AND amount < 0 THEN -amount ELSE 0 END) as income
         FROM transactions
         WHERE date >= ? AND date <= ? AND pending = 0 AND ignored = 0
           AND category NOT IN (SELECT category FROM hidden_categories)
@@ -244,10 +243,10 @@ export async function getSpendingTrends(months = 12, category?: string): Promise
       `,
       args: [from, to],
     });
-    const rows = result.rows as unknown as { category: string; total: number }[];
+    const rows = result.rows as unknown as { category: string; spending: number; income: number }[];
 
-    const income   = rows.filter((r) => Number(r.total) < 0).reduce((s, r) => s + Math.abs(Number(r.total)), 0);
-    const expenses = rows.filter((r) => Number(r.total) > 0).reduce((s, r) => s + Number(r.total), 0);
+    const income = rows.reduce((sum, row) => sum + Number(row.income), 0);
+    const expenses = rows.reduce((sum, row) => sum + Math.max(0, Number(row.spending)), 0);
 
     const row: MonthlyTrendRow = {
       year,
@@ -261,7 +260,7 @@ export async function getSpendingTrends(months = 12, category?: string): Promise
     if (category) {
       const catRow = rows.find((r) => r.category === category);
       row.category = category;
-      row.categoryTotal = catRow ? Number(catRow.total) : 0;
+      row.categoryTotal = catRow ? Math.max(0, Number(catRow.spending)) : 0;
     }
 
     return row;

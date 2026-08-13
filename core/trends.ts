@@ -2,6 +2,7 @@ import { db } from './db.js';
 import { MONTHS, addDays, weekLabel, type TrendsRange } from './dateUtils.js';
 import { buildSearchRe } from './queries.js';
 import { buildFilterClause, type Filter } from './filters.js';
+import { incomeClassification, spendingClassification } from './transaction-math.js';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const Q_FROM = ['01', '04', '07', '10'];
@@ -19,7 +20,7 @@ export async function buildTrendViews(): Promise<View[]> {
   const result = await db.execute(`
     SELECT t.category, SUM(t.amount) as total
     FROM transactions t
-    WHERE t.pending = 0 AND t.ignored = 0 AND t.amount > 0
+    WHERE t.ignored = 0 AND ${spendingClassification('t')}
       AND t.category NOT IN (SELECT category FROM hidden_categories)
     GROUP BY t.category ORDER BY total DESC
   `);
@@ -102,11 +103,11 @@ export async function getPeriodTotals(view: View, range: TrendsRange, filter?: F
         SELECT cat.y, cat.m, ${flexExpr}
         FROM (
           SELECT CAST(substr(t.date,1,4) AS INTEGER) as y, CAST(substr(t.date,6,2) AS INTEGER) as m,
-            t.category, SUM(t.amount) as total
+            t.category, SUM(CASE WHEN ${spendingClassification('t')} THEN t.amount ELSE 0 END) as total
           FROM transactions t
-          WHERE t.pending = 0 AND t.ignored = 0
+          WHERE t.ignored = 0
             AND t.category NOT IN (SELECT category FROM hidden_categories)${f.clause}
-          GROUP BY y, m, t.category HAVING SUM(t.amount) > 0
+          GROUP BY y, m, t.category HAVING SUM(CASE WHEN ${spendingClassification('t')} THEN t.amount ELSE 0 END) > 0
         ) cat LEFT JOIN categories c ON c.name = cat.category
         GROUP BY cat.y, cat.m ORDER BY cat.y, cat.m
       `;
@@ -115,11 +116,11 @@ export async function getPeriodTotals(view: View, range: TrendsRange, filter?: F
         SELECT cat.y, cat.q, ${flexExpr}
         FROM (
           SELECT CAST(substr(t.date,1,4) AS INTEGER) as y, (CAST(substr(t.date,6,2) AS INTEGER)-1)/3+1 as q,
-            t.category, SUM(t.amount) as total
+            t.category, SUM(CASE WHEN ${spendingClassification('t')} THEN t.amount ELSE 0 END) as total
           FROM transactions t
-          WHERE t.pending = 0 AND t.ignored = 0
+          WHERE t.ignored = 0
             AND t.category NOT IN (SELECT category FROM hidden_categories)${f.clause}
-          GROUP BY y, q, t.category HAVING SUM(t.amount) > 0
+          GROUP BY y, q, t.category HAVING SUM(CASE WHEN ${spendingClassification('t')} THEN t.amount ELSE 0 END) > 0
         ) cat LEFT JOIN categories c ON c.name = cat.category
         GROUP BY cat.y, cat.q ORDER BY cat.y, cat.q
       `;
@@ -127,11 +128,12 @@ export async function getPeriodTotals(view: View, range: TrendsRange, filter?: F
       sql = `
         SELECT cat.y, ${flexExpr}
         FROM (
-          SELECT CAST(substr(t.date,1,4) AS INTEGER) as y, t.category, SUM(t.amount) as total
+          SELECT CAST(substr(t.date,1,4) AS INTEGER) as y, t.category,
+            SUM(CASE WHEN ${spendingClassification('t')} THEN t.amount ELSE 0 END) as total
           FROM transactions t
-          WHERE t.pending = 0 AND t.ignored = 0
+          WHERE t.ignored = 0
             AND t.category NOT IN (SELECT category FROM hidden_categories)${f.clause}
-          GROUP BY y, t.category HAVING SUM(t.amount) > 0
+          GROUP BY y, t.category HAVING SUM(CASE WHEN ${spendingClassification('t')} THEN t.amount ELSE 0 END) > 0
         ) cat LEFT JOIN categories c ON c.name = cat.category
         GROUP BY cat.y ORDER BY cat.y
       `;
@@ -140,11 +142,11 @@ export async function getPeriodTotals(view: View, range: TrendsRange, filter?: F
         SELECT cat.week_start, ${flexExpr}
         FROM (
           SELECT date(t.date, '-' || ((CAST(strftime('%w', t.date) AS INTEGER)+6)%7) || ' days') as week_start,
-            t.category, SUM(t.amount) as total
+            t.category, SUM(CASE WHEN ${spendingClassification('t')} THEN t.amount ELSE 0 END) as total
           FROM transactions t
-          WHERE t.pending = 0 AND t.ignored = 0
+          WHERE t.ignored = 0
             AND t.category NOT IN (SELECT category FROM hidden_categories)${f.clause}
-          GROUP BY week_start, t.category HAVING SUM(t.amount) > 0
+          GROUP BY week_start, t.category HAVING SUM(CASE WHEN ${spendingClassification('t')} THEN t.amount ELSE 0 END) > 0
         ) cat LEFT JOIN categories c ON c.name = cat.category
         GROUP BY cat.week_start ORDER BY cat.week_start
       `;
@@ -177,12 +179,20 @@ export async function getPeriodTotals(view: View, range: TrendsRange, filter?: F
     ? `AND EXISTS (SELECT 1 FROM categories c WHERE c.name = t.category AND c.flexibility = '${view.flex}')`
     : 'AND t.category NOT IN (SELECT category FROM hidden_categories)';
 
-  const amtFilter = view.mode === 'income' ? 'AND t.amount < 0' : view.mode === 'net' ? '' : 'AND t.amount > 0';
-  const base = `FROM transactions t WHERE t.pending = 0 AND t.ignored = 0 ${amtFilter} ${catFilter}${f.clause}`;
+  const classFilter = view.mode === 'income'
+    ? `AND ${incomeClassification('t')} AND t.pending = 0`
+    : view.mode === 'net'
+      ? `AND (${incomeClassification('t')} OR ${spendingClassification('t')})`
+      : `AND ${spendingClassification('t')}`;
+  const base = `FROM transactions t WHERE t.ignored = 0 ${classFilter} ${catFilter}${f.clause}`;
   const isNet = view.mode === 'net';
   const totalExpr = isNet
-    ? 'SUM(CASE WHEN t.amount < 0 THEN ABS(t.amount) ELSE 0 END) as income, SUM(CASE WHEN t.amount > 0 THEN t.amount ELSE 0 END) as expenses, SUM(CASE WHEN t.amount < 0 THEN ABS(t.amount) ELSE -t.amount END) as total'
-    : 'SUM(ABS(t.amount)) as total';
+    ? `SUM(CASE WHEN ${incomeClassification('t')} AND t.pending = 0 AND t.amount < 0 THEN -t.amount ELSE 0 END) as income,
+       MAX(0, SUM(CASE WHEN ${spendingClassification('t')} THEN t.amount ELSE 0 END)) as expenses,
+       SUM(CASE WHEN ${incomeClassification('t')} AND t.pending = 0 AND t.amount < 0 THEN -t.amount WHEN ${spendingClassification('t')} THEN -t.amount ELSE 0 END) as total`
+    : view.mode === 'income'
+      ? 'SUM(CASE WHEN t.amount < 0 THEN -t.amount ELSE 0 END) as total'
+      : 'MAX(0, SUM(t.amount)) as total';
   const zeroRow = (p: { label: string; from: string; to: string }): PeriodRow =>
     ({ ...p, total: 0, ...(isNet ? { income: 0, expenses: 0 } : {}) });
 
@@ -231,12 +241,14 @@ export async function getSearchPeriodTotals(search: string, range: TrendsRange, 
   const f = buildFilterClause(filter, 'transactions');
   const result = await db.execute({
     sql: `
-    SELECT COALESCE(display_name, name) as display, merchant_name, date, amount
-    FROM transactions WHERE pending = 0 AND ignored = 0${f.clause}
+    SELECT COALESCE(display_name, name) as display, merchant_name, date, amount, pending,
+      ${incomeClassification('transactions')} as is_income,
+      ${spendingClassification('transactions')} as is_spending
+    FROM transactions WHERE ignored = 0${f.clause}
   `,
     args: f.args,
   });
-  const rows = result.rows as unknown as { display: string; merchant_name: string | null; date: string; amount: number }[];
+  const rows = result.rows as unknown as { display: string; merchant_name: string | null; date: string; amount: number; pending: number; is_income: number; is_spending: number }[];
   const re = buildSearchRe(search);
   const periodMap = new Map<string, { income: number; expenses: number }>();
   for (const row of rows) {
@@ -244,7 +256,8 @@ export async function getSearchPeriodTotals(search: string, range: TrendsRange, 
     const from = periodFrom(row.date, range);
     const existing = periodMap.get(from) ?? { income: 0, expenses: 0 };
     const amt = Number(row.amount);
-    if (amt < 0) existing.income += Math.abs(amt); else existing.expenses += amt;
+    if (row.is_income && !row.pending && amt < 0) existing.income += Math.abs(amt);
+    if (row.is_spending) existing.expenses = Math.max(0, existing.expenses + amt);
     periodMap.set(from, existing);
   }
   const allPeriods = await generateAllPeriods(range);

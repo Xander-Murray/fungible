@@ -33,11 +33,12 @@ async function insertTx(opts: {
   pending?: number;
   ignored?: number;
   accountId?: string;
+  classification?: string | null;
 }) {
   txId++;
   await db.execute({
-    sql: `INSERT INTO transactions (id, account_id, date, name, merchant_name, display_name, amount, category, pending, ignored)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    sql: `INSERT INTO transactions (id, account_id, date, name, merchant_name, display_name, amount, category, pending, ignored, classification)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       `tx${txId}`,
       opts.accountId ?? 'acct1',
@@ -49,6 +50,7 @@ async function insertTx(opts: {
       opts.category ?? 'Shopping',
       opts.pending ?? 0,
       opts.ignored ?? 0,
+      opts.classification ?? null,
     ],
   });
 }
@@ -105,10 +107,10 @@ describe('getRangeSummary', () => {
     expect(s.expenses).toBeCloseTo(100);
   });
 
-  it('excludes pending transactions', async () => {
+  it('includes pending spending as committed spending', async () => {
     await insertTx({ amount: 100, category: 'Shopping', pending: 1 });
     const s = await getRangeSummary('2025-01-01', '2025-01-31');
-    expect(s.expenses).toBe(0);
+    expect(s.expenses).toBe(100);
   });
 
   it('excludes ignored transactions', async () => {
@@ -134,11 +136,11 @@ describe('getRangeSummary', () => {
     expect(s.byCategory).toEqual([{ category: 'Travel', total: 200 }]);
   });
 
-  it('real categories with a net negative total count as income (not spending)', async () => {
+  it('does not promote refund-heavy categories to income', async () => {
     await insertTx({ amount: 100, category: 'Rewards' });
     await insertTx({ amount: -200, category: 'Rewards' });
     const s = await getRangeSummary('2025-01-01', '2025-01-31');
-    expect(s.income).toBeCloseTo(100);
+    expect(s.income).toBe(0);
     expect(s.expenses).toBe(0);
     expect(s.byCategory).toHaveLength(0);
   });
@@ -164,6 +166,22 @@ describe('getRangeSummary', () => {
     expect(s.expenses).toBeCloseTo(300);
     expect(s.income).toBeCloseTo(500);
     expect(s.byCategory).toHaveLength(2);
+  });
+
+  it('uses classifications to exclude transfers, investments, and ambiguous credits', async () => {
+    await insertTx({ amount: 100, category: 'Shopping', classification: 'EXPENSE' });
+    await insertTx({ amount: 800, category: 'Loan Payment', classification: 'TRANSFER' });
+    await insertTx({ amount: 75, category: 'Roth IRA', classification: 'INVESTMENT' });
+    await insertTx({ amount: -800, category: 'Uncategorized', classification: 'TRANSFER' });
+    await insertTx({ amount: -200, category: 'Uncategorized', classification: 'NEEDS_REVIEW' });
+    await insertTx({ amount: -500, category: 'Income', classification: 'INCOME' });
+
+    expect(await getRangeSummary('2025-01-01', '2025-01-31')).toEqual({
+      income: 500,
+      expenses: 100,
+      net: 400,
+      byCategory: [{ category: 'Shopping', total: 100 }],
+    });
   });
 });
 
@@ -257,11 +275,11 @@ describe('getFlexSummary', () => {
     expect(s.untagged).toBeCloseTo(100);
   });
 
-  it('excludes pending transactions', async () => {
+  it('includes pending transactions as committed spending', async () => {
     await insertCat('Rent', 'fixed');
     await insertTx({ amount: 1500, category: 'Rent', pending: 1 });
     const s = await getFlexSummary('2025-01-01', '2025-01-31');
-    expect(s.fixed).toBe(0);
+    expect(s.fixed).toBe(1500);
   });
 
   it('excludes ignored transactions', async () => {
@@ -331,7 +349,7 @@ describe('getMerchantSummary', () => {
     expect(rows[0].pct).toBeCloseTo(1);
   });
 
-  it('respects account filter and excludes hidden/pending/ignored rows', async () => {
+  it('respects account filter and includes pending while excluding hidden and ignored rows', async () => {
     await db.execute({ sql: "INSERT INTO hidden_categories VALUES (?)", args: ['Transfer'] });
     await insertTx({ amount: 90, category: 'Food', name: 'A', accountId: 'acct1' });
     await insertTx({ amount: 110, category: 'Food', name: 'B', accountId: 'acct2' });
@@ -340,9 +358,8 @@ describe('getMerchantSummary', () => {
     await insertTx({ amount: 500, category: 'Transfer', name: 'E', accountId: 'acct1' });
 
     const rows = await getMerchantSummary('Food', '2025-01-01', '2025-01-31', { accounts: ['acct1'] });
-    expect(rows).toHaveLength(1);
-    expect(rows[0].merchant).toBe('A');
-    expect(rows[0].total).toBeCloseTo(90);
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => [row.merchant, row.total])).toEqual([['C', 200], ['A', 90]]);
   });
 
   it('uses merchant_name as display when display_name is null', async () => {
@@ -623,13 +640,13 @@ describe('getOwnerRows', () => {
     await db.execute({ sql: 'INSERT INTO hidden_categories VALUES (?)', args: ['Transfer'] });
     await addAccount('a1', 'Mark');
     await insertTx({ accountId: 'a1', amount: 100 });                      // counts
-    await insertTx({ accountId: 'a1', amount: -500 });                     // income, excluded
-    await insertTx({ accountId: 'a1', amount: 40, pending: 1 });           // pending, excluded
+    await insertTx({ accountId: 'a1', amount: -500, category: 'Income' }); // income, excluded
+    await insertTx({ accountId: 'a1', amount: 40, pending: 1 });           // pending commitment, counted
     await insertTx({ accountId: 'a1', amount: 40, ignored: 1 });           // ignored, excluded
     await insertTx({ accountId: 'a1', amount: 40, category: 'Transfer' }); // hidden, excluded
     await insertTx({ accountId: 'a1', amount: 999, date: '2024-12-31' });  // out of range, excluded
     const rows = await getOwnerRows(...RANGE);
-    expect(rows).toEqual([{ owner: 'Mark', spending: 100 }]);
+    expect(rows).toEqual([{ owner: 'Mark', spending: 140 }]);
   });
 });
 
