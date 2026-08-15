@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Text, useInput, useApp } from 'ink';
+import { Box, Text, useApp } from 'ink';
+import { useVimInput } from './useVimInput.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
@@ -141,7 +142,9 @@ export function Setup() {
     }
   }
 
-  useInput((input, key) => {
+  const isTyping = step === 'plaid-client-id' || step === 'plaid-secret' || step === 'start-date';
+
+  useVimInput((input, key) => {
     if (step === 'welcome') {
       if (key.return) {
         setStep(alreadyConfigured ? 'start-date' : 'plaid-choice');
@@ -222,7 +225,7 @@ export function Setup() {
       if (key.return) exit();
       return;
     }
-  });
+  }, { isTyping });
 
   const startDateIsValid = step === 'start-date' && validateStartDate(startDateInput) === null;
   const startDateRequestedDays = startDateIsValid ? daysFromStartDate(startDateInput.trim()) : null;

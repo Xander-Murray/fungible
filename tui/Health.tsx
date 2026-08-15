@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text } from 'ink';
+import { useVimInput } from './useVimInput.js';
 import type { Screen } from './App.js';
 import { fmt, fmtSigned, fmtPct, fmtMonths, fmtCompact, Divider } from './fmt.js';
 import { handleNavKey } from './nav.js';
@@ -93,7 +94,7 @@ export function Health({ onNavigate, isActive, showHints }: { onNavigate: (s: Sc
     setEditBuffer('');
   }
 
-  useInput((input, key) => {
+  useVimInput((input, key) => {
     if (editMode) {
       if (key.escape) { setEditMode(false); setEditBuffer(''); return; }
       if (key.return) { applyEdit(editBuffer); return; }
@@ -149,7 +150,7 @@ export function Health({ onNavigate, isActive, showHints }: { onNavigate: (s: Sc
       if (currentDial === 'growth')     setGrowth(DEFAULT_GROWTH);
       return;
     }
-  }, { isActive: isActive !== false });
+  }, { isActive: isActive !== false, isTyping: editMode });
 
   // ── Derived ─────────────────────────────────────────────────────────────────
   const cashMonths   = monthlySpend > 0 ? data.cash   / monthlySpend : 0;
@@ -192,7 +193,7 @@ export function Health({ onNavigate, isActive, showHints }: { onNavigate: (s: Sc
       {showHints && (
         editMode
           ? <Text dimColor>type value  ·  Enter confirm  ·  Esc cancel</Text>
-          : <Text dimColor>↑↓ select  ·  ← → adjust  ·  Enter type  ·  [r] reset</Text>
+          : <Text dimColor>j/k select  ·  h/l adjust  ·  Enter type  ·  [r] reset</Text>
       )}
       <Divider />
 

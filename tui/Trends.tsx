@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text } from 'ink';
+import { useVimInput } from './useVimInput.js';
 import { type TrendsRange } from '../core/dateUtils.js';
 import { buildTrendViews, generateAllPeriods, getPeriodTotals, getSearchMatchingPeriods, getSearchPeriodTotals, type View, type PeriodRow } from '../core/trends.js';
 import type { Screen, TxFilter } from './App.js';
@@ -114,7 +115,7 @@ export function Trends({
   const activeRows = search ? searchRows : rows;
   const clampedCursor = activeRows.length > 0 ? Math.min(cursor, activeRows.length - 1) : 0;
 
-  useInput((input, key) => {
+  useVimInput((input, key) => {
     if (searchMode) {
       if (key.escape) { setSearchInput(search); setSearchMode(false); return; }
       if (key.return) { setSearch(searchInput); setSearchMode(false); return; }
@@ -168,7 +169,7 @@ export function Trends({
         });
       }
     }
-  }, { isActive: isActive !== false });
+  }, { isActive: isActive !== false, isTyping: searchMode });
 
   const PAGE = 30;
   const { visible, pageStart } = usePagination(activeRows, clampedCursor, PAGE);
@@ -214,7 +215,7 @@ export function Trends({
 
       <Box marginTop={1}><Text bold>Trends</Text></Box>
       <Text dimColor>{showHints
-        ? (searchMode ? '' : search ? '↑↓ navigate  ·  [r/R] range  ·  [/] search  ·  Enter txns' : '←→ view  ·  ↑↓ navigate  ·  [r/R] range  ·  [/] search  ·  Enter txns')
+        ? (searchMode ? '' : search ? 'j/k navigate  ·  [r/R] range  ·  [/] search  ·  Enter txns' : 'h/l view  ·  j/k navigate  ·  [r/R] range  ·  [/] search  ·  Enter txns')
         : '[/] search'}
       </Text>
 

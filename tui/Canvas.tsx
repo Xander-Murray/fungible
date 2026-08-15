@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text } from 'ink';
+import { useVimInput } from './useVimInput.js';
 import type { Screen } from './App.js';
 import { handleNavKey } from './nav.js';
 import { Divider } from './fmt.js';
@@ -62,7 +63,7 @@ export function CanvasView({ spec, isActive }: { spec: CanvasSpec; isActive?: bo
     setEditBuffer('');
   }
 
-  useInput((_input, key) => {
+  useVimInput((_input, key) => {
     if (editMode) {
       if (key.escape) { setEditMode(false); setEditBuffer(''); return; }
       if (key.return) { applyEdit(editBuffer); return; }
@@ -86,7 +87,7 @@ export function CanvasView({ spec, isActive }: { spec: CanvasSpec; isActive?: bo
     if (_input === 'r' && currentKey) {
       setDialValues((v) => ({ ...v, [currentKey]: dials[dialIdx].default }));
     }
-  }, { isActive: isActive !== false });
+  }, { isActive: isActive !== false, isTyping: editMode });
 
   return (
     <Box flexDirection="column">
@@ -169,7 +170,7 @@ export function Canvas({ onNavigate, onLoadSpec, isActive, showHints, spec, spec
 
   useEffect(() => { setHistoryIdx(0); }, [search]);
 
-  useInput((input, key) => {
+  useVimInput((input, key) => {
     if (mode === 'history') {
       if (key.escape)    { setMode('view'); setSearch(''); return; }
       if (key.upArrow)   { setHistoryIdx((i) => Math.max(0, i - 1)); return; }
@@ -196,7 +197,7 @@ export function Canvas({ onNavigate, onLoadSpec, isActive, showHints, spec, spec
     if (key.escape) { onNavigate('dashboard'); return; }
     if (input === '/') { setMode('history'); setHistory(loadHistory()); return; }
     handleNavKey(input, 'canvas', onNavigate);
-  }, { isActive: isActive !== false });
+  }, { isActive: isActive !== false, isTyping: mode === 'history' });
 
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1}>
@@ -208,7 +209,7 @@ export function Canvas({ onNavigate, onLoadSpec, isActive, showHints, spec, spec
           {mode === 'history'
             ? '↑↓ select  ·  type to filter  ·  Enter load  ·  ctrl + d delete  ·  Esc back'
             : spec
-              ? '↑↓ select  ·  ← → adjust  ·  Enter type  ·  [r] reset  ·  [/] history'
+              ? 'j/k select  ·  h/l adjust  ·  Enter type  ·  [r] reset  ·  [/] history'
               : '[/] history  ·  or ask the agent (`)'}
         </Text>
       )}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text } from 'ink';
+import { useVimInput } from './useVimInput.js';
 import {
   getRangeSummary, getFlexSummary, getUncategorizedCount, getDataBounds, getAccountRows, getOwnerRows,
   getCategoryDriftData, getFlexDriftData, getAccountDriftData, countSearchMatches, getSearchFilteredData, getMerchantSummary,
@@ -299,7 +300,7 @@ export function Dashboard({ onNavigate, isActive, initialFilter, showHints, budg
   const merchantNameW = Math.max(12, inner - 30);
   const budgetBarW = Math.max(10, Math.min(20, inner - 58));
 
-  useInput((input, key) => {
+  useVimInput((input, key) => {
     if (merchantDrill) {
       if (key.escape) {
         setMerchantDrill(null);
@@ -478,7 +479,7 @@ export function Dashboard({ onNavigate, isActive, initialFilter, showHints, budg
     if (input === '3' && search) { onNavigate('trends', { search }); return; }
 
     handleNavKey(input, 'dashboard', onNavigate);
-  }, { isActive: isActive !== false });
+  }, { isActive: isActive !== false, isTyping: searchMode });
 
   const displaySummary  = filteredSummary ?? summary;
   const displayFlexData = filteredFlex    ?? flexData;
@@ -505,16 +506,16 @@ export function Dashboard({ onNavigate, isActive, initialFilter, showHints, budg
 
       <Box marginTop={1}><Text bold>Dashboard</Text></Box>
       {merchantDrill
-        ? showHints && <Text dimColor>← → period  ·  [r/R] range  ·  ↑↓ merchant  ·  Enter txns  ·  Esc back</Text>
+        ? showHints && <Text dimColor>h/l period  ·  [r/R] range  ·  j/k merchant  ·  Enter txns  ·  Esc back</Text>
         : <Text dimColor>
             {showHints
               ? (view === 'account'
-                  ? `[/] search  ·  ← → period  ·  ↑↓ select  ·  Enter txns  ·  Space ${selectedAccount ? 'unfilter' : 'filter'}  ·  [c] clear  ·  [Tab] view  ·  [s] scorecard`
+                  ? `[/] search  ·  h/l period  ·  j/k select  ·  Enter txns  ·  Space ${selectedAccount ? 'unfilter' : 'filter'}  ·  [c] clear  ·  [Tab] view  ·  [s] scorecard`
                   : view === 'categories'
-                    ? `[/] search  ·  ← → period  ·  ↑↓ select  ·  Enter txns${scorecardMode ? `  ·  [x] ${detailMode ? 'compact' : 'columns'}` : '  ·  [m] merchants'}  ·  [Tab] view  ·  [s] scorecard`
+                    ? `[/] search  ·  h/l period  ·  j/k select  ·  Enter txns${scorecardMode ? `  ·  [x] ${detailMode ? 'compact' : 'columns'}` : '  ·  [m] merchants'}  ·  [Tab] view  ·  [s] scorecard`
                     : view === 'owner'
-                      ? '← → period  ·  [r/R] range  ·  [Tab] view'
-                      : `[/] search  ·  ← → period  ·  Enter txns${scorecardMode ? `  ·  [x] ${detailMode ? 'compact' : 'columns'}` : ''}  ·  [Tab] view  ·  [s] scorecard`)
+                      ? 'h/l period  ·  [r/R] range  ·  [Tab] view'
+                      : `[/] search  ·  h/l period  ·  Enter txns${scorecardMode ? `  ·  [x] ${detailMode ? 'compact' : 'columns'}` : ''}  ·  [Tab] view  ·  [s] scorecard`)
               : '[/] search'}
           </Text>
       }

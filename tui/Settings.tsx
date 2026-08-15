@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text } from 'ink';
+import { useVimInput } from './useVimInput.js';
 import type { Screen } from './App.js';
 import { handleNavKey } from './nav.js';
 import { loadProfile, saveProfile, type Profile } from '../core/profile.js';
@@ -106,7 +107,7 @@ export function Settings({ onNavigate, isActive, showHints }: {
     return m ? parseInt(m[1]) : null;
   }
 
-  useInput((input, key) => {
+  useVimInput((input, key) => {
     if (editing) {
       if (key.escape) { setEditing(false); setEditBuffer(''); return; }
       if (key.return) { commitEdit(); return; }
@@ -162,7 +163,7 @@ export function Settings({ onNavigate, isActive, showHints }: {
         return;
       }
     }
-  }, { isActive: isActive !== false });
+  }, { isActive: isActive !== false, isTyping: editing });
 
   function renderField(row: SettingsRow, sectionCursor: number) {
     const isSelected = sectionCursor === clampedCursor;
@@ -201,7 +202,7 @@ export function Settings({ onNavigate, isActive, showHints }: {
     <Box flexDirection="column" paddingX={2} paddingY={1}>
       <PageHeader current="settings" showHints={showHints} />
       <Box marginTop={1}><Text bold>Settings</Text></Box>
-      {showHints && <Text dimColor>↑↓ navigate  ·  Enter edit  ·  [a] add  ·  [d] remove  ·  Esc back</Text>}
+      {showHints && <Text dimColor>j/k navigate  ·  Enter edit  ·  [a] add  ·  [d] remove  ·  Esc back</Text>}
       <Divider />
 
       {/* Household section */}

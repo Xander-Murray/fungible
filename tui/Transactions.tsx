@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text } from 'ink';
+import { useVimInput } from './useVimInput.js';
 import {
   setTransactionCategory, clearTransactionOverride, setTransactionIgnored,
   setTransactionDisplayName, deleteTransaction,
@@ -105,10 +106,10 @@ export function Transactions({ onNavigate, initialFilter, isActive, showHints }:
   useEffect(() => { load(); }, [from, to, search, sort, txType, flex, sharedFilter, refreshKey]);
 
   const setTyping = useSetTyping();
+  const isTyping = mode === 'search' || mode === 'tag' || mode === 'tag-all'
+    || (mode === 'edit' && (editField === 'name' || editField === 'pattern'));
   useEffect(() => {
-    const isTextInput = mode === 'search' || mode === 'tag' || mode === 'tag-all'
-      || (mode === 'edit' && (editField === 'name' || editField === 'pattern'));
-    setTyping(isTextInput);
+    setTyping(isTyping);
   }, [mode, editField]);
 
   const selected = txs[cursor];
@@ -238,7 +239,7 @@ export function Transactions({ onNavigate, initialFilter, isActive, showHints }:
     ? allTags.filter((t) => t.name.toLowerCase().includes(tagInput.toLowerCase()))
     : allTags;
 
-  useInput((input, key) => {
+  useVimInput((input, key) => {
     if (mode === 'search') {
       if (key.escape) { setSearchInput(''); setSearch(''); setMode('list'); return; }
       if (key.return) { setSearch(searchInput); setMode('list'); return; }
@@ -444,7 +445,7 @@ export function Transactions({ onNavigate, initialFilter, isActive, showHints }:
         return;
       }
     }
-  }, { isActive: isActive !== false });
+  }, { isActive: isActive !== false, isTyping });
 
   const termW = useTerminalWidth();
   const inner = Math.max(60, termW) - 4;
@@ -507,7 +508,7 @@ export function Transactions({ onNavigate, initialFilter, isActive, showHints }:
       </Box>
       <Text dimColor>
         {showHints
-          ? `[/] search  ·  [f] filter  ·  ${from ? '← →  ·  ' : ''}[s] sort  ·  Enter edit  [v] auto class  [i] ignore  ·  [S] sync`
+          ? `[/] search  ·  [f] filter  ·  ${from ? 'h/l period  ·  ' : ''}j/k select  ·  [s] sort  ·  Enter edit  [v] auto class  [i] ignore  ·  [S] sync`
           : '[/] search'}
       </Text>
 

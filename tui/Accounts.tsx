@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text } from 'ink';
+import { useVimInput } from './useVimInput.js';
 import { useSetTyping } from './TypingContext.js';
 import { useRefreshKey } from './RefreshContext.js';
 import { spawn } from 'node:child_process';
@@ -152,8 +153,9 @@ export function Accounts({ onNavigate, isActive, showHints }: { onNavigate: (s: 
   const setTyping = useSetTyping();
   const TEXT_INPUT_STEPS = new Set<AddStep>(['link-days', 'file', 'manual-name', 'manual-value', 'new-acct-name']);
   const TEXT_INPUT_MODES = new Set<AcctMode>(['edit', 'update-value']);
+  const isTyping = TEXT_INPUT_STEPS.has(addStep) || TEXT_INPUT_MODES.has(acctMode);
   useEffect(() => {
-    setTyping(TEXT_INPUT_STEPS.has(addStep) || TEXT_INPUT_MODES.has(acctMode));
+    setTyping(isTyping);
   }, [addStep, acctMode]);
 
   const termW = useTerminalWidth();
@@ -380,7 +382,7 @@ export function Accounts({ onNavigate, isActive, showHints }: { onNavigate: (s: 
 
   // ─── Input handling ──────────────────────────────────────────────────────────
 
-  useInput((input, key) => {
+  useVimInput((input, key) => {
     // A lingering sync error clears on the next keypress. The key still performs
     // its normal action (dismiss + act), so pressing [s] here retries the sync.
     if (syncStatus === 'error') { setSyncStatus('idle'); setSyncMsg(''); }
@@ -669,7 +671,7 @@ export function Accounts({ onNavigate, isActive, showHints }: { onNavigate: (s: 
       if (key.return) { setManualName(''); setManualValue(''); setAddStep('landing'); setMainView('accounts'); }
       return;
     }
-  }, { isActive: isActive !== false });
+  }, { isActive: isActive !== false, isTyping });
 
   // ─── Render ──────────────────────────────────────────────────────────────────
 
@@ -692,11 +694,11 @@ export function Accounts({ onNavigate, isActive, showHints }: { onNavigate: (s: 
       {showHints && <Box justifyContent="flex-end">
         <Text dimColor>
           {mainView === 'accounts' && acctMode === 'list'
-            ? `↑↓ select  ·  Enter edit${selectedAcct?.id.startsWith('manual-') ? '  ·  [v] update value' : '  ·  [r] repair link'}  ·  [x] delete  ·  [s] sync`
+            ? `j/k select  ·  Enter edit${selectedAcct?.id.startsWith('manual-') ? '  ·  [v] update value' : '  ·  [r] repair link'}  ·  [x] delete  ·  [s] sync`
             : mainView === 'accounts' && acctMode === 'edit'
             ? '↑↓ field  ·  ← → change  ·  Enter save  ·  Esc cancel'
             : mainView === 'dupes'
-            ? '↑↓ select  ·  [x] delete CSV copy  ·  [X] delete all'
+            ? 'j/k select  ·  [x] delete CSV copy  ·  [X] delete all'
             : ''}
         </Text>
       </Box>}

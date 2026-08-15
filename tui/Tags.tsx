@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text } from 'ink';
+import { useVimInput } from './useVimInput.js';
 import { getTagSummary, getAllTags, type MonthlySummary, type Tag } from '../core/queries.js';
 import { createTag, renameTag, deleteTag } from '../core/tags.js';
 import type { Screen, TxFilter } from './App.js';
@@ -47,7 +48,8 @@ export function Tags({ onNavigate, isActive, showHints, initialFilter }: { onNav
   }, [refreshKey]);
 
   const setTyping = useSetTyping();
-  useEffect(() => { setTyping(mode === 'search' || mode === 'add' || mode === 'rename'); }, [mode]);
+  const isTyping = mode === 'search' || mode === 'add' || mode === 'rename';
+  useEffect(() => { setTyping(isTyping); }, [mode]);
 
   function openDetail(tag: Tag) {
     void getTagSummary(tag.name).then(setTagSummary);
@@ -67,7 +69,7 @@ export function Tags({ onNavigate, isActive, showHints, initialFilter }: { onNav
   const SPAN_W = 17;
   const tagNameW = Math.max(10, inner - 55);
 
-  useInput((input, key) => {
+  useVimInput((input, key) => {
     if (mode === 'search') {
       if (key.escape) { setSearch(''); setMode('list'); setCursor(0); return; }
       if (key.return) { setMode('list'); return; }
@@ -176,7 +178,7 @@ export function Tags({ onNavigate, isActive, showHints, initialFilter }: { onNav
       onNavigate('transactions', { drillFrom: 'tags' });
       return;
     }
-  }, { isActive: isActive !== false });
+  }, { isActive: isActive !== false, isTyping });
 
   const tag = visibleTags[cursor];
   const maxCategorySpend = tagSummary?.byCategory[0]?.total ?? 1;
@@ -189,7 +191,7 @@ export function Tags({ onNavigate, isActive, showHints, initialFilter }: { onNav
         <>
           <Box flexDirection="column" marginTop={1} marginBottom={1}>
             <Text bold>Tags <Text dimColor>— # {tag.name}  ← {cursor + 1} / {tags.length} →</Text></Text>
-            {showHints && <Text dimColor>← → tag  ·  ↑↓ category  ·  Enter txns  ·  [t] all txns  ·  Esc back</Text>}
+            {showHints && <Text dimColor>h/l tag  ·  j/k category  ·  Enter txns  ·  [t] all txns  ·  Esc back</Text>}
           </Box>
 
           <Divider />

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text } from 'ink';
+import { useVimInput } from './useVimInput.js';
 import { getAllRules, getAllNameRules, getAllTagRules, getAllCategories, getCategoryDetails, getHiddenCategorySet, toggleHiddenCategory, getLinkedAccounts, type Rule, type NameRule, type TagRuleRow, type CategoryDetail, type LinkedAccount } from '../core/queries.js';
 import {
   getUncategorizedCount, deleteCategoryRule, deleteNameRule,
@@ -96,7 +97,8 @@ export function Rules({ onNavigate, isActive, showHints }: { onNavigate: (s: Scr
 
   const setTyping = useSetTyping();
   const TEXT_INPUT_MODES_RULES = new Set<Mode>(['search', 'rule-form', 'name-rule-form', 'tag-rule-form', 'add-category-name', 'edit-category']);
-  useEffect(() => { setTyping(TEXT_INPUT_MODES_RULES.has(mode)); }, [mode]);
+  const isTyping = TEXT_INPUT_MODES_RULES.has(mode);
+  useEffect(() => { setTyping(isTyping); }, [mode]);
 
   const termW = useTerminalWidth();
   const inner = Math.max(60, termW) - 4;
@@ -289,7 +291,7 @@ export function Rules({ onNavigate, isActive, showHints }: { onNavigate: (s: Scr
     }
   }
 
-  useInput((input, key) => {
+  useVimInput((input, key) => {
     if (mode === 'search') {
       if (key.escape) { clearSearchPreservingCursor(); setMode('list'); return; }
       if (key.return) { setMode('list'); return; }
@@ -557,7 +559,7 @@ export function Rules({ onNavigate, isActive, showHints }: { onNavigate: (s: Scr
       if (key.backspace || key.delete) { setNewCategoryName((p) => p.slice(0, -1)); return; }
       if (input && !key.ctrl && !key.meta) setNewCategoryName((p) => p + input);
     }
-  }, { isActive: isActive !== false });
+  }, { isActive: isActive !== false, isTyping });
 
   const q = search.toLowerCase();
   const filteredRules = q

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text } from 'ink';
+import { useVimInput } from './useVimInput.js';
 import { getAccountsWithBalances, getNetWorthHistory, type AccountBalance, type NetWorthPeriod } from '../core/queries.js';
 import { isAssetAccount, isLiabilityAccount } from '../core/account-class.js';
 import type { Screen } from './App.js';
@@ -65,7 +66,7 @@ export function NetWorth({ onNavigate, isActive, showHints }: { onNavigate: (s: 
     });
   }, [range, refreshKey]);
 
-  useInput((input, key) => {
+  useVimInput((input, key) => {
     if (key.tab)      { setView((v) => v === 'accounts' ? 'types' : 'accounts'); return; }
     if (key.escape) { onNavigate('dashboard'); return; }
     if (key.upArrow)   { setCursor((c) => Math.max(0, c - 1)); return; }
@@ -110,7 +111,7 @@ export function NetWorth({ onNavigate, isActive, showHints }: { onNavigate: (s: 
       <PageHeader current="networth" showHints={showHints} />
 
       <Box marginTop={1}><Text bold>Net Worth</Text></Box>
-      {showHints && <Text dimColor>[Tab] {view === 'accounts' ? 'by type' : 'by account'}  ·  [r] range  ·  ↑↓ scroll</Text>}
+      {showHints && <Text dimColor>[Tab] {view === 'accounts' ? 'by type' : 'by account'}  ·  [r] range  ·  j/k scroll</Text>}
       <Divider />
 
       {accounts.length === 0 ? (

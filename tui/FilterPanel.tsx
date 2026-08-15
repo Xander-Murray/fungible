@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text } from 'ink';
+import { useVimInput } from './useVimInput.js';
 import { getFilterOptions, type FilterOptions } from '../core/queries.js';
 import { useFilter } from './FilterContext.js';
 import {
@@ -181,7 +182,7 @@ export function FilterPanel({ isActive, onClose }: { isActive: boolean; onClose:
     onClose();
   }
 
-  useInput((input, key) => {
+  useVimInput((input, key) => {
     if (key.escape) { onClose(); return; }
     if (key.return) { apply(); return; }
     if (key.leftArrow) { setSection((s) => (s + SECTIONS.length - 1) % SECTIONS.length); return; }
@@ -218,7 +219,7 @@ export function FilterPanel({ isActive, onClose }: { isActive: boolean; onClose:
   return (
     <ModalPanel title="Filter" borderColor={C_ACCENT}>
       <Text dimColor>
-        ←→ section  ·  ↑↓ move  ·  Space toggle  ·  a all  ·  n none  ·  i invert  ·  c clear  ·  Enter apply  ·  Esc cancel
+        h/l section  ·  j/k move  ·  Space toggle  ·  a all  ·  n none  ·  i invert  ·  c clear  ·  Enter apply  ·  Esc cancel
       </Text>
       <Box marginTop={1} gap={3}>
         {SECTIONS.map((s) => (

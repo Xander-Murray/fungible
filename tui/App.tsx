@@ -103,7 +103,7 @@ function AppInner() {
   useInput((input) => {
     if (chatFocused || screenTyping || filterOpen) return;
     if (input === 'q') exit();
-    if (input === 'h') setShowHints((v) => !v);
+    if (input === '?') setShowHints((v) => !v);
     if (input === 'f' && (screen === 'dashboard' || screen === 'transactions' || screen === 'trends')) {
       setFilterOpen(true);
     }

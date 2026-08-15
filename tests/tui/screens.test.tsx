@@ -323,6 +323,20 @@ describe('Dashboard', () => {
     await waitFor(() => expect(frame(r)).toContain(`← ${new Date().getFullYear()} →`));
   });
 
+  it('supports h/l period movement and j/k category movement', async () => {
+    const r = dash();
+    await waitFor(() => expect(frame(r)).toContain('← May 2026 →'));
+    r.stdin.write('h');
+    await waitFor(() => expect(frame(r)).toContain('← Apr 2026 →'));
+    r.stdin.write('l');
+    await waitFor(() => expect(frame(r)).toContain('← May 2026 →'));
+    await waitFor(() => expect(frame(r)).toContain('▶ Grocery'));
+    r.stdin.write('j');
+    await waitFor(() => expect(frame(r)).toContain('▶ Bills & Utilities'));
+    r.stdin.write('k');
+    await waitFor(() => expect(frame(r)).toContain('▶ Grocery'));
+  });
+
   it('/ key opens search mode', async () => {
     const r = dash();
     await waitFor(() => expect(frame(r)).toContain('Income'));
@@ -575,6 +589,17 @@ describe('Transactions', () => {
     await waitFor(() => expect(frame(r)).toContain('Whole Foods'));
     r.stdin.write('/');
     await waitFor(() => expect(frame(r)).toContain('Esc cancel'));
+  });
+
+  it('types hjkl normally inside search input', async () => {
+    const r = txns();
+    await waitFor(() => expect(frame(r)).toContain('Whole Foods'));
+    r.stdin.write('/');
+    await waitFor(() => expect(frame(r)).toContain('Esc cancel'));
+    for (const value of ['h', 'hj', 'hjk', 'hjkl']) {
+      r.stdin.write(value.at(-1)!);
+      await waitFor(() => expect(frame(r)).toContain(value));
+    }
   });
 
   it('s key cycles sort order label', async () => {
@@ -2008,12 +2033,14 @@ describe('App', () => {
     await waitFor(() => expect(frame(r)).toContain('Dashboard'));
   });
 
-  it('h key toggles hint text', async () => {
+  it('? toggles hint text while h remains available for Vim movement', async () => {
     const r = render(<App />);
     await waitFor(() => expect(frame(r)).toContain('fungible'));
-    // hints off by default — pressing h shows them
+    expect(frame(r)).toContain('[?]');
     r.stdin.write('h');
-    await waitFor(() => expect(frame(r)).toContain('[h]'));
+    await waitFor(() => expect(frame(r)).toContain('[?]'));
+    r.stdin.write('?');
+    await waitFor(() => expect(frame(r)).toContain('[0] settings'));
   });
 
   it('pressing 0 switches to Settings screen', async () => {
